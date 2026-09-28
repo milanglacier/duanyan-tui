@@ -123,14 +123,27 @@ pub fn librime_candidates(configured: Option<&Path>, env: &dyn Env) -> Vec<PathB
     out
 }
 
+/// Where a resolved `shared_data_dir` came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharedDirSource {
+    /// The config file, the environment or a system rime data dir.
+    Found,
+    /// The `share/rime-data` shipped next to the binary, which only holds
+    /// opencc data.
+    Bundled,
+}
+
 /// Resolves `shared_data_dir`. `None` means nothing was found; librime then
 /// uses the user data dir for everything, which is a normal setup.
-pub fn find_shared_data_dir(configured: Option<&Path>, env: &dyn Env) -> Option<PathBuf> {
+pub fn find_shared_data_dir(
+    configured: Option<&Path>,
+    env: &dyn Env,
+) -> Option<(PathBuf, SharedDirSource)> {
     if let Some(p) = configured {
-        return Some(expand_tilde(p));
+        return Some((expand_tilde(p), SharedDirSource::Found));
     }
     if let Some(p) = env.var("DUANYAN_RIME_SHARED_DIR") {
-        return Some(PathBuf::from(p));
+        return Some((PathBuf::from(p), SharedDirSource::Found));
     }
     let data_dirs = env
         .var("XDG_DATA_DIRS")
@@ -149,7 +162,19 @@ pub fn find_shared_data_dir(configured: Option<&Path>, env: &dyn Env) -> Option<
         ));
         candidates.push(PathBuf::from("/opt/homebrew/share/rime-data"));
     }
-    candidates.into_iter().find(|p| env.exists(p))
+    if let Some(p) = candidates.into_iter().find(|p| env.exists(p)) {
+        return Some((p, SharedDirSource::Found));
+    }
+    // The opencc data shipped in the `-bundled` release archives, after any
+    // system data. librime looks for opencc configs in the rime data dirs and
+    // then only in the data dir compiled into its opencc.
+    let exe_dir = env.exe_dir()?;
+    let prefix = exe_dir.parent().map(Path::to_owned);
+    std::iter::once(exe_dir)
+        .chain(prefix)
+        .map(|d| d.join("share").join("rime-data"))
+        .find(|p| env.exists(p))
+        .map(|p| (p, SharedDirSource::Bundled))
 }
 
 #[cfg(test)]
@@ -228,19 +253,53 @@ mod tests {
         env.files
             .insert(PathBuf::from("/run/current-system/sw/share/rime-data"));
         env.files.insert(PathBuf::from("/usr/share/rime-data"));
+        let found = |p: &str| Some((PathBuf::from(p), SharedDirSource::Found));
         assert_eq!(
             find_shared_data_dir(None, &env),
-            Some(PathBuf::from("/run/current-system/sw/share/rime-data"))
+            found("/run/current-system/sw/share/rime-data")
         );
         env.vars.insert("DUANYAN_RIME_SHARED_DIR", "/env/rime-data");
-        assert_eq!(
-            find_shared_data_dir(None, &env),
-            Some(PathBuf::from("/env/rime-data"))
-        );
+        assert_eq!(find_shared_data_dir(None, &env), found("/env/rime-data"));
         assert_eq!(
             find_shared_data_dir(Some(Path::new("/cfg")), &env),
-            Some(PathBuf::from("/cfg"))
+            found("/cfg")
         );
         assert_eq!(find_shared_data_dir(None, &FakeEnv::default()), None);
+    }
+
+    #[test]
+    fn shared_dir_bundled() {
+        let bundled = |p: &str| Some((PathBuf::from(p), SharedDirSource::Bundled));
+        let mut env = FakeEnv {
+            exe_dir: Some(PathBuf::from("/opt/duanyan")),
+            ..Default::default()
+        };
+        env.files
+            .insert(PathBuf::from("/opt/duanyan/share/rime-data"));
+        assert_eq!(
+            find_shared_data_dir(None, &env),
+            bundled("/opt/duanyan/share/rime-data")
+        );
+
+        // A system rime data dir comes first.
+        env.files.insert(PathBuf::from("/usr/share/rime-data"));
+        assert_eq!(
+            find_shared_data_dir(None, &env),
+            Some((
+                PathBuf::from("/usr/share/rime-data"),
+                SharedDirSource::Found
+            ))
+        );
+
+        // `<prefix>/bin/duanyan` with `<prefix>/share/rime-data`.
+        let mut env = FakeEnv {
+            exe_dir: Some(PathBuf::from("/opt/bin")),
+            ..Default::default()
+        };
+        env.files.insert(PathBuf::from("/opt/share/rime-data"));
+        assert_eq!(
+            find_shared_data_dir(None, &env),
+            bundled("/opt/share/rime-data")
+        );
     }
 }

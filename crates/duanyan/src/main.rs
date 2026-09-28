@@ -103,7 +103,8 @@ struct Setup {
     config_path: PathBuf,
     user_data_dir: PathBuf,
     shared_data_dir: PathBuf,
-    shared_detected: bool,
+    /// `None` when no shared data dir was found.
+    shared_source: Option<paths::SharedDirSource>,
     state_dir: PathBuf,
     log_dir: PathBuf,
 }
@@ -124,9 +125,13 @@ impl Setup {
         let shared =
             paths::find_shared_data_dir(config.rime.shared_data_dir.as_deref(), &paths::RealEnv);
         let state_dir = paths::state_dir();
+        let (shared_data_dir, shared_source) = match shared {
+            Some((dir, source)) => (dir, Some(source)),
+            None => (user_data_dir.clone(), None),
+        };
         Ok(Self {
-            shared_detected: shared.is_some(),
-            shared_data_dir: shared.unwrap_or_else(|| user_data_dir.clone()),
+            shared_data_dir,
+            shared_source,
             log_dir: state_dir.join("log"),
             config,
             config_path,
@@ -230,10 +235,10 @@ fn info(setup: &Setup) -> anyhow::Result<ExitCode> {
     println!(
         "shared_data_dir  {}{}",
         setup.shared_data_dir.display(),
-        if setup.shared_detected {
-            ""
-        } else {
-            " (none found; using user_data_dir)"
+        match setup.shared_source {
+            Some(paths::SharedDirSource::Found) => "",
+            Some(paths::SharedDirSource::Bundled) => " (bundled opencc data)",
+            None => " (none found; using user_data_dir)",
         }
     );
     println!("state dir        {}", setup.state_dir.display());
@@ -437,7 +442,13 @@ fn tui(
             ),
             (
                 "共享数据目录".into(),
-                setup.shared_data_dir.display().to_string(),
+                match setup.shared_source {
+                    Some(paths::SharedDirSource::Bundled) => format!(
+                        "{}（bundled 包自带的 opencc 数据）",
+                        setup.shared_data_dir.display()
+                    ),
+                    _ => setup.shared_data_dir.display().to_string(),
+                },
             ),
             ("日志目录".into(), setup.log_dir.display().to_string()),
             (
