@@ -97,8 +97,10 @@ crates/
 - `RimeTraits`：
   - `app_name = "rime.duanyan"`，`distribution_name = "Duanyan"`，
     `distribution_code_name = "duanyan"`，`distribution_version` = crate 版本。
-  - `log_dir = $XDG_STATE_HOME/duanyan/log`：**必须设置**，否则 glog 会写到
-    stderr，把 TUI 画面弄乱。级别用 `rime.log_level`（默认 warning）。
+  - `log_dir = $XDG_STATE_HOME/duanyan/log`：**必须设置并预先创建**。librime 不会
+    创建该目录；目录不存在时 glog 每条日志都往 stderr 打
+    `Could not create logging file`，会把 TUI 画面弄乱（M1 实测）。级别用
+    `rime.log_level`（默认 warning）。
 - 结构体镜像手写，不用 bindgen，可以省掉构建期对头文件的依赖。
   增加一个 `#[test]`：devShell 下用 `cc` 读取 `rime_api.h` 里的 `sizeof` /
   `offsetof`，与 Rust 侧逐字段比对（只在设置了 `RIME_INCLUDE_DIR` 时运行）。
@@ -337,11 +339,15 @@ KeyEvent
 5. 按 `deploy_on_startup` 处理：
    - 首次运行（`user_data_dir/build` 下没有任何 `*.schema.yaml`）：不论策略如何都部署，
      UI 显示“首次部署中…”，并阻塞输入。
-   - `notify`（默认）：在 Rust 侧复刻 librime 的 `detect_modifications`，即取
-     user 和 shared 两个目录本身以及其中顶层 `*.yaml`（排除 `user.yaml`）的最大 mtime，
-     与 `user_config_open("user")` 读出的 `var/last_build_time` 比较。有变更就在状态栏
+   - `notify`（默认）：在 Rust 侧做与 librime `detect_modifications` 类似的检测：取
+     user 和 shared 两个目录中顶层 `*.yaml`（排除 `user.yaml`）的最大 mtime，与
+     `user_config_open("user")` 读出的 `var/last_build_time` 比较。有变更就在状态栏
      显示 `⚠ 配置已变更 · F5 部署`，继续使用旧的 build。
-   - `auto`：有变更就后台部署，阻塞输入并显示进度。
+     与 librime 的区别：**不比较目录本身的 mtime**。实测（M1）发现目录 mtime 在任何
+     新建条目时都会变化，例如首次会话创建 `luna_pinyin.userdb/`，这会导致首次部署后
+     的下一次启动必然误报。代价是“删除某个 yaml”检测不到，需要手动部署。
+   - `auto`：用同一个检测；有变更就调用 `start_maintenance(true)` 后台部署，阻塞输入
+     并显示进度。
    - `never`：跳过检测。
 6. `create_session`，拿到快照，开始渲染。
 
@@ -366,9 +372,9 @@ KeyEvent
   - 仍然正常初始化 rime，但禁用 `deploy` / `sync` 动作和启动部署，因为部署会写
     build/，不能与主实例并发。
   - 状态栏常驻提示“用户词典已被另一实例占用，本实例不学习新词”。
-  - **待验证**：userdb 的 LevelDB 已被锁住时，librime 是否能优雅降级（只记日志、
-    翻译照常）。验证不通过的备选方案：从实例使用临时 `user_data_dir`，并把
-    `staging_dir` 指向主实例的 `build/`。
+  - **已验证（M1）**：userdb 的 LevelDB 被锁住时，librime 只记一条
+    `Error opening db ... lock ... Resource temporarily unavailable`，翻译照常，只是
+    不读写用户词典。
 - `ImeEngine` trait 与 `EngineCommand/EngineEvent` 是日后 daemon 化的接缝。v1 不实现 daemon。
 
 ## 7. UI
@@ -497,7 +503,6 @@ KeyEvent
 
 ## 13. 风险与待验证
 
-- userdb 被占用时 librime 的行为（§6.3），需要在 M2 前验证。
 - `supports_keyboard_enhancement()` 在 tmux / zellij 里的实际表现。无论结果如何
   compat 都兜底，但 auto 误判为支持时可能出现按键异常，需要在帮助页里说明手动 `off`。
 - 非 KKP 下 Alt 组合键与 Esc 的歧义（crossterm 靠超时区分），会影响 `alt+l`

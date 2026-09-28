@@ -1,0 +1,20 @@
+[package]
+name = "duanyan"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23.1"
+clap = { version = "4.6.7", features = ["derive"] }
+crossterm = { version = "0.29.0", features = ["use-dev-tty", "bracketed-paste"] }
+jiff = "0.2.37"
+ratatui = "0.30.2"
+rime-dl = { version = "0.1.0", path = "../rime-dl" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+toml = "1.1.6"
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.2"
