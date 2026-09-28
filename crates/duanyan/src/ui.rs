@@ -9,7 +9,8 @@ use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, Focus, HitMap, Level};
+use crate::app::{App, Focus, HitMap, Level, Mode};
+use crate::buffer::cell;
 use crate::config::{CandidateLayout, GlobalAction, HistoryAction, InputAction};
 use crate::engine::{ImeEngine, Maintenance, Preedit};
 use crate::keys::KeySpec;
@@ -21,6 +22,8 @@ pub struct UiContext {
     pub theme: Theme,
     pub candidate_layout: CandidateLayout,
     pub show_comment: bool,
+    /// The file being edited, shown in the header.
+    pub edit_path: Option<String>,
     /// (label, value) pairs for the help screen.
     pub info: Vec<(String, String)>,
 }
@@ -89,26 +92,42 @@ fn draw_fullscreen<E: ImeEngine>(
             Style::default().fg(t.subtext),
         ));
     }
+    let version = concat!("v", env!("CARGO_PKG_VERSION"));
+    if let Some(path) = &ctx.edit_path {
+        // Keep the file name: callers such as git pass long absolute paths.
+        let used: usize = spans.iter().map(|s| s.content.width()).sum();
+        let room = (header.width as usize).saturating_sub(used + version.width() + 4);
+        spans.push(Span::styled(
+            format!("  {}", truncate_start(path, room)),
+            Style::default().fg(t.text),
+        ));
+    }
     f.render_widget(Paragraph::new(Line::from(spans)), header);
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            concat!("v", env!("CARGO_PKG_VERSION")),
+            version,
             Style::default().fg(t.subtext),
         )))
         .right_aligned(),
         header,
     );
 
-    // Input block, sized to its content.
+    // Input block, sized to its content; editing a file, it fills the body
+    // and the history is hidden.
+    let edit = app.mode == Mode::Edit;
     let text_width = inner.width.saturating_sub(4).max(1);
     let layout = layout_text(app, t, text_width);
     let max_text_rows = (area.height / 2).max(1);
     let text_rows = (layout.rows.len() as u16).clamp(1, max_text_rows);
     let cand_rows = candidate_rows(ctx, app.snapshot.candidates.len());
-    let input_h = text_rows + cand_rows + 2;
     let body_top = header.bottom();
     let body_bottom = status.y;
-    let input_h = input_h.min(body_bottom.saturating_sub(body_top));
+    let body_h = body_bottom.saturating_sub(body_top);
+    let input_h = if edit {
+        body_h
+    } else {
+        (text_rows + cand_rows + 2).min(body_h)
+    };
     let input = Rect::new(inner.x, body_bottom - input_h, inner.width, input_h);
     let history = Rect::new(
         inner.x,
@@ -117,7 +136,7 @@ fn draw_fullscreen<E: ImeEngine>(
         input.y.saturating_sub(body_top),
     );
 
-    if history.height >= 3 {
+    if !edit && history.height >= 3 {
         draw_history(f, app, ctx, history, hits);
     }
     let focused = app.focus == Focus::Input;
@@ -134,6 +153,11 @@ fn draw_fullscreen<E: ImeEngine>(
     if content.height == 0 {
         return;
     }
+    let text_rows = if edit {
+        content.height.saturating_sub(cand_rows).max(1)
+    } else {
+        text_rows
+    };
     let text_area = Rect::new(
         content.x + 1,
         content.y,
@@ -185,20 +209,31 @@ struct TextLayout {
 }
 
 fn layout_text<E: ImeEngine>(app: &App<E>, t: &Theme, width: u16) -> TextLayout {
-    let text = app.buffer.text();
-    let (before, after) = text.split_at(app.buffer.cursor());
+    layout_cells(
+        app.buffer.text(),
+        app.buffer.cursor(),
+        app.snapshot.preedit.as_ref(),
+        t,
+        width,
+    )
+}
+
+fn layout_cells(
+    text: &str,
+    cursor: usize,
+    preedit: Option<&Preedit>,
+    t: &Theme,
+    width: u16,
+) -> TextLayout {
+    let (before, after) = text.split_at(cursor);
     let normal = Style::default().fg(t.text);
     let mut cells: Vec<(&str, Style)> = Vec::new();
-    for g in before.graphemes(true) {
-        cells.push((g, normal));
-    }
+    push_text(&mut cells, before, normal);
     let mut cursor_cell = cells.len();
-    if let Some(p) = app.snapshot.preedit.as_ref().filter(|p| !p.text.is_empty()) {
+    if let Some(p) = preedit.filter(|p| !p.text.is_empty()) {
         cursor_cell = push_preedit(&mut cells, p, t);
     }
-    for g in after.graphemes(true) {
-        cells.push((g, normal));
-    }
+    push_text(&mut cells, after, normal);
 
     let width = width as usize;
     let mut rows: Vec<Vec<(String, Style)>> = vec![Vec::new()];
@@ -213,22 +248,20 @@ fn layout_text<E: ImeEngine>(app: &App<E>, t: &Theme, width: u16) -> TextLayout 
             col = 0;
             continue;
         }
-        let w = g.width().max(if g.chars().all(char::is_control) {
-            0
-        } else {
-            1
-        });
-        if col + w > width && col > 0 {
+        let mut shown = cell(g, col);
+        if col + shown.1 > width && col > 0 {
             rows.push(Vec::new());
             col = 0;
             if i == cursor_cell {
                 cursor = (rows.len() - 1, 0);
             }
+            shown = cell(g, 0);
         }
+        let (s, w) = shown;
         let row = rows.last_mut().unwrap();
         match row.last_mut() {
-            Some((s, st)) if *st == *style => s.push_str(g),
-            _ => row.push((g.to_string(), *style)),
+            Some((text, st)) if *st == *style => text.push_str(&s),
+            _ => row.push((s.into_owned(), *style)),
         }
         col += w;
     }
@@ -240,6 +273,19 @@ fn layout_text<E: ImeEngine>(app: &App<E>, t: &Theme, width: u16) -> TextLayout 
         cursor = (rows.len() - 1, col as u16);
     }
     TextLayout { rows, cursor }
+}
+
+/// Pushes one cell per grapheme. A CRLF is one grapheme but two cells, so
+/// the `\n` still ends the row.
+fn push_text<'a>(cells: &mut Vec<(&'a str, Style)>, text: &'a str, style: Style) {
+    for g in text.graphemes(true) {
+        if g == "\r\n" {
+            cells.push((&g[..1], style));
+            cells.push((&g[1..], style));
+        } else {
+            cells.push((g, style));
+        }
+    }
 }
 
 /// Pushes preedit cells; returns the cell index of rime's caret.
@@ -502,10 +548,20 @@ fn draw_status<E: ImeEngine>(
     let hint = |table: &str, action: &str, what: &str| {
         key_label(&km.keys_for(table, action)).map(|k| (k, what.to_string()))
     };
-    let hints: Vec<(String, String)> = if app.stdout_mode {
+    let hints: Vec<(String, String)> = if app.mode == Mode::Stdout {
         [
             hint("input", InputAction::Submit.name(), "输出"),
             hint("input", InputAction::Cancel.name(), "取消"),
+            hint("global", GlobalAction::Help.name(), "帮助"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    } else if app.mode == Mode::Edit {
+        [
+            hint("input", InputAction::Submit.name(), "保存"),
+            hint("input", InputAction::Cancel.name(), "放弃"),
+            hint("input", InputAction::Newline.name(), "换行"),
             hint("global", GlobalAction::Help.name(), "帮助"),
         ]
         .into_iter()
@@ -583,6 +639,24 @@ fn truncate(s: &str, width: usize) -> String {
     }
     out.push('…');
     out
+}
+
+/// Truncates to `width` display columns, keeping the end behind a `…`.
+fn truncate_start(s: &str, width: usize) -> String {
+    if s.width() <= width {
+        return s.to_string();
+    }
+    let mut kept = Vec::new();
+    let mut w = 0;
+    for g in s.graphemes(true).rev() {
+        let gw = g.width();
+        if w + gw + 1 > width {
+            break;
+        }
+        kept.push(g);
+        w += gw;
+    }
+    std::iter::once("…").chain(kept.into_iter().rev()).collect()
 }
 
 fn draw_history<E: ImeEngine>(
@@ -713,10 +787,10 @@ fn action_label(table: &str, action: &str) -> &'static str {
         ("global", "help") => "帮助",
         ("global", "deploy") => "重新部署 rime",
         ("global", "sync") => "同步用户词典",
-        ("input", "submit") => "提交",
+        ("input", "submit") => "提交 / 保存",
         ("input", "newline") => "换行",
         ("input", "focus_history") => "切到历史",
-        ("input", "cancel") => "取消 / 清空",
+        ("input", "cancel") => "取消 / 清空 / 放弃",
         ("input", "left") => "左移",
         ("input", "right") => "右移",
         ("input", "prev_line") => "上一行",
@@ -778,7 +852,7 @@ fn draw_help<E: ImeEngine>(f: &mut Frame, app: &App<E>, ctx: &UiContext, area: R
             } else {
                 action_label(table, action).to_string()
             };
-            let mut spans = vec![Span::raw(format!("  {}", pad(&label, 16)))];
+            let mut spans = vec![Span::raw(format!("  {}", pad(&label, 18)))];
             if keys.is_empty() {
                 spans.push(Span::styled("（未绑定）", dim));
             }
@@ -801,7 +875,7 @@ fn draw_help<E: ImeEngine>(f: &mut Frame, app: &App<E>, ctx: &UiContext, area: R
     lines.push(Line::from(Span::styled("环境", head)));
     for (k, v) in &ctx.info {
         lines.push(Line::from(vec![
-            Span::styled(format!("  {}", pad(k, 16)), dim),
+            Span::styled(format!("  {}", pad(k, 18)), dim),
             Span::raw(v.clone()),
         ]));
     }
@@ -827,10 +901,39 @@ fn pad(s: &str, width: usize) -> String {
 mod tests {
     use super::*;
 
+    fn rows(l: &TextLayout) -> Vec<String> {
+        l.rows
+            .iter()
+            .map(|r| r.iter().map(|(s, _)| s.as_str()).collect())
+            .collect()
+    }
+
+    #[test]
+    fn layout_expands_tabs_and_controls() {
+        let text = "#\tab\r\nx\x1b";
+        let l = layout_cells(text, 2, None, &Theme::MOCHA, 20);
+        assert_eq!(rows(&l), ["#       ab^M", "x^["]);
+        assert_eq!(l.cursor, (0, 8));
+    }
+
+    #[test]
+    fn layout_wraps_tab_to_next_row() {
+        let l = layout_cells("abcdefg\tx", 9, None, &Theme::MOCHA, 10);
+        // The tab needs 1 column at 7, fits; "x" is at column 8.
+        assert_eq!(rows(&l), ["abcdefg x"]);
+        let l = layout_cells("abcdefghi\tx", 11, None, &Theme::MOCHA, 10);
+        // At column 9 the tab needs 7 columns: it wraps and takes 8.
+        assert_eq!(rows(&l), ["abcdefghi", "        x"]);
+        assert_eq!(l.cursor, (1, 9));
+    }
+
     #[test]
     fn truncation() {
         assert_eq!(truncate("你好世界", 8), "你好世界");
         assert_eq!(truncate("你好世界", 7), "你好世…");
         assert_eq!(truncate("abcdef", 4), "abc…");
+        assert_eq!(truncate_start("/a/b/file", 9), "/a/b/file");
+        assert_eq!(truncate_start("/a/b/file", 6), "…/file");
+        assert_eq!(truncate_start("/目录/文件", 5), "…文件");
     }
 }

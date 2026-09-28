@@ -71,10 +71,21 @@ git commit -m "$(duanyan --stdout)"
 
 加 `--fullscreen` 可以仍用全屏界面，但输出到 stdout。
 
+### 作为编辑器
+
+`duanyan <文件>` 打开文件编辑，可以设为 `EDITOR`，在 `git commit`、`git rebase -i`、zsh 的 `edit-command-line` 等场景里直接用 rime 输入：
+
+```sh
+export EDITOR=duanyan    # 或 git config --global core.editor duanyan
+```
+
+Enter 保存并退出，Ctrl+J 换行；Esc 放弃修改并以非零退出码退出（文件改过时需要再按一次），git 会据此中止提交。
+
 | 命令 | 说明 |
 | --- | --- |
 | `duanyan` | 全屏模式 |
 | `duanyan --stdout` | 提交后把文字输出到 stdout |
+| `duanyan <文件>` | 编辑文件，Enter 保存，可作为 `EDITOR` |
 | `duanyan deploy [--full]` | 部署 rime 配置，`--full` 强制重建 |
 | `duanyan sync` | 同步用户词典 |
 | `duanyan info` | 显示实际使用的 librime 与数据目录 |

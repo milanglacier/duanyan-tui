@@ -93,6 +93,7 @@
             zsh # scripts/e2e.sh: shell integration
             fish
             bashInteractive
+            git # scripts/e2e.sh: duanyan as GIT_EDITOR
           ];
           DUANYAN_LIBRIME_PATH = librimeFile pkgs;
           DUANYAN_RIME_SHARED_DIR = "${pkgs.rime-data}/share/rime-data";

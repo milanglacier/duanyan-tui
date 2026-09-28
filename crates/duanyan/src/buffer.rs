@@ -1,7 +1,35 @@
 //! The multi-line input buffer holding committed text.
 
+use std::borrow::Cow;
+
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+
+const TAB_STOP: usize = 8;
+
+/// How grapheme `g` is drawn at display column `col`, with its width: a tab
+/// extends to the next tab stop, other control characters use caret notation
+/// (`^M`) so no raw control byte reaches the terminal, and nothing is
+/// narrower than one column. Not for `\n`, which ends the line.
+pub fn cell(g: &str, col: usize) -> (Cow<'_, str>, usize) {
+    if g == "\t" {
+        let w = TAB_STOP - col % TAB_STOP;
+        return (" ".repeat(w).into(), w);
+    }
+    let mut chars = g.chars();
+    if let (Some(c), None) = (chars.next(), chars.next())
+        && c.is_control()
+    {
+        let s = match c {
+            '\0'..='\x1f' => format!("^{}", (c as u8 ^ 0x40) as char),
+            '\x7f' => "^?".into(),
+            _ => "\u{fffd}".into(),
+        };
+        let w = s.width();
+        return (s.into(), w);
+    }
+    (g.into(), g.width().max(1))
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Buffer {
@@ -29,6 +57,12 @@ impl Buffer {
         self.text.clear();
         self.cursor = 0;
         self.goal_col = None;
+    }
+
+    /// Replaces the text; the cursor goes to the start.
+    pub fn set_text(&mut self, text: &str) {
+        self.clear();
+        self.text.push_str(text);
     }
 
     /// Takes the text and resets the buffer.
@@ -97,7 +131,9 @@ impl Buffer {
     }
 
     fn col(&self) -> usize {
-        self.text[self.line_start()..self.cursor].width()
+        self.text[self.line_start()..self.cursor]
+            .graphemes(true)
+            .fold(0, |w, g| w + cell(g, w).1)
     }
 
     /// Byte offset in the line starting at `start` closest to display column
@@ -108,7 +144,7 @@ impl Buffer {
             .map_or(self.text.len(), |i| start + i);
         let mut w = 0;
         for (i, g) in self.text[start..end].grapheme_indices(true) {
-            let gw = g.width();
+            let gw = cell(g, w).1;
             if w + gw > col {
                 return start + i;
             }
@@ -299,6 +335,40 @@ mod tests {
         assert_eq!(b.text(), "ab\n");
         b.kill_word();
         assert_eq!(b.text(), "ab");
+    }
+
+    #[test]
+    fn cells() {
+        assert_eq!(cell("\t", 0), (Cow::from("        "), 8));
+        assert_eq!(cell("\t", 3).1, 5);
+        assert_eq!(cell("\t", 8).1, 8);
+        assert_eq!(cell("\r", 0), (Cow::from("^M"), 2));
+        assert_eq!(cell("\x1b", 0), (Cow::from("^["), 2));
+        assert_eq!(cell("\x7f", 0), (Cow::from("^?"), 2));
+        assert_eq!(cell("中", 5), (Cow::from("中"), 2));
+    }
+
+    #[test]
+    fn tabs_keep_display_column() {
+        // "#\tab" puts "a" at column 8.
+        let mut b = buf("#\tab\n0123456789");
+        b.prev_line();
+        b.home();
+        b.right();
+        b.right(); // after the tab, column 8
+        b.next_line();
+        assert_eq!(b.cursor_line_col(), (1, 8));
+        b.right(); // column 9
+        b.prev_line(); // column 9 on the first line is after "a"
+        assert_eq!(b.cursor_line_col(), (0, 3));
+    }
+
+    #[test]
+    fn set_text_puts_cursor_at_start() {
+        let mut b = buf("old");
+        b.set_text("a\nb");
+        assert_eq!(b.text(), "a\nb");
+        assert_eq!(b.cursor(), 0);
     }
 
     #[test]

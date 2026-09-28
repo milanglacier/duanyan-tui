@@ -2,6 +2,7 @@ mod app;
 mod buffer;
 mod clipboard;
 mod config;
+mod edit;
 mod engine;
 mod history;
 mod instance;
@@ -24,9 +25,10 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 use rime_dl::{Library, Notification, Rime, Traits};
 
-use crate::app::{App, Effect, Exit, Level};
+use crate::app::{App, Effect, Exit, Level, Mode};
 use crate::clipboard::Clipboard;
 use crate::config::{Config, DeployOnStartup, Keymap, ThemeMode, Tristate};
+use crate::edit::EditFile;
 use crate::engine::{ImeEngine, RimeEngine};
 use crate::history::History;
 use crate::instance::Instance;
@@ -34,8 +36,15 @@ use crate::theme::Theme;
 use crate::ui::UiContext;
 
 #[derive(Parser)]
-#[command(version, about = "端砚：基于 rime 的终端中文输入草稿板")]
+#[command(
+    version,
+    about = "端砚：基于 rime 的终端中文输入草稿板",
+    args_conflicts_with_subcommands = true
+)]
 struct Cli {
+    /// Edit FILE and write it back on submit (for use as $EDITOR).
+    #[arg(value_name = "FILE", conflicts_with_all = ["stdout", "print_default_config"])]
+    file: Option<PathBuf>,
     /// Config file (default: ~/.config/duanyan/config.toml).
     #[arg(long, global = true)]
     config: Option<PathBuf>,
@@ -204,7 +213,14 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         Some(Command::Deploy { full }) => maintenance(&setup, Some(full)),
         Some(Command::Sync) => maintenance(&setup, None),
         Some(Command::Init { .. }) => unreachable!(),
-        None => tui(&setup, cli.stdout, cli.fullscreen),
+        None => {
+            let (mode, edit) = match cli.file {
+                Some(path) => (Mode::Edit, Some(EditFile::load(path)?)),
+                None if cli.stdout => (Mode::Stdout, None),
+                None => (Mode::Scratch, None),
+            };
+            tui(&setup, mode, cli.fullscreen, edit.as_ref())
+        }
     }
 }
 
@@ -276,7 +292,12 @@ fn maintenance(setup: &Setup, deploy: Option<bool>) -> anyhow::Result<ExitCode> 
     }
 }
 
-fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<ExitCode> {
+fn tui(
+    setup: &Setup,
+    mode: Mode,
+    fullscreen: bool,
+    edit: Option<&EditFile>,
+) -> anyhow::Result<ExitCode> {
     let cfg = &setup.config;
     // Catch config mistakes before touching the terminal; legacy-terminal
     // conflicts are checked again once KKP support is known.
@@ -345,7 +366,7 @@ fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<Exi
     let page_size = engine.page_size();
 
     // Terminal.
-    let inline = stdout_mode && !fullscreen;
+    let inline = mode == Mode::Stdout && !fullscreen;
     crossterm::terminal::enable_raw_mode()?;
     let mut tty = tty::open_tty()?;
     let want_probe = cfg.tui.kitty_keyboard == Tristate::Auto || cfg.theme.mode == ThemeMode::Auto;
@@ -398,6 +419,7 @@ fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<Exi
         theme,
         candidate_layout: cfg.tui.candidate_layout,
         show_comment: cfg.tui.show_candidate_comment,
+        edit_path: edit.map(|e| e.path.display().to_string()),
         info: vec![
             ("librime".into(), lib_desc),
             (
@@ -447,7 +469,10 @@ fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<Exi
     let mut terminal = Terminal::with_options(backend, TerminalOptions { viewport })?;
 
     let mut app = App::new(engine, keymap, history);
-    app.stdout_mode = stdout_mode;
+    app.mode = mode;
+    if let Some(edit) = edit {
+        app.open_file(&edit.original);
+    }
     app.copy_on_submit = cfg.general.copy_on_submit;
     app.deploy_hint = deploy_hint;
     app.secondary = !instance.is_primary();
@@ -458,7 +483,7 @@ fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<Exi
         app.notify(Level::Error, "rime 尚未部署，请关闭其它端砚实例后重新启动");
     }
 
-    let result = event_loop(&mut terminal, &mut app, &ctx, &clipboard, &mut tty);
+    let result = event_loop(&mut terminal, &mut app, &ctx, &clipboard, edit, &mut tty);
 
     drop(terminal);
     if let Some(inline) = &inline_area {
@@ -479,6 +504,7 @@ fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<Exi
             out.flush()?;
             ExitCode::SUCCESS
         }
+        Some(Exit::Saved) => ExitCode::SUCCESS,
         Some(Exit::Cancel) => ExitCode::FAILURE,
         Some(Exit::Quit) | None => ExitCode::SUCCESS,
     })
@@ -489,6 +515,7 @@ fn event_loop(
     app: &mut App<RimeEngine>,
     ctx: &UiContext,
     clipboard: &Clipboard,
+    edit: Option<&EditFile>,
     tty: &mut std::fs::File,
 ) -> anyhow::Result<()> {
     loop {
@@ -520,6 +547,13 @@ fn event_loop(
                         app.notify(Level::Error, format!("复制失败：{e}"));
                     }
                 }
+                // Saved from inside the UI so that a failure leaves the
+                // text on screen for another try.
+                Effect::Save(text) => match edit.map(|e| e.save(&text)) {
+                    Some(Ok(())) => app.exit = Some(Exit::Saved),
+                    Some(Err(e)) => app.notify(Level::Error, format!("保存失败：{e}")),
+                    None => {}
+                },
             }
         }
     }

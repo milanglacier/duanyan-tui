@@ -21,18 +21,32 @@ pub enum Focus {
     History,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// Submitted text goes to the history and the clipboard.
+    Scratch,
+    /// `--stdout`: submitting prints the text and exits.
+    Stdout,
+    /// `duanyan FILE`: submitting saves the file and exits.
+    Edit,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Exit {
     /// `--stdout`: print this text.
     Submit(String),
+    /// The edited file was written.
+    Saved,
     Cancel,
     Quit,
 }
 
-/// Side effects the event loop performs with terminal access.
+/// Side effects the event loop performs with terminal or file access.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     Copy(String),
+    /// Write the edited file; on success the event loop sets `Exit::Saved`.
+    Save(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +89,12 @@ pub struct App<E: ImeEngine> {
     pub copied: Option<(usize, Instant)>,
     pub show_help: bool,
     pub help_scroll: u16,
-    pub stdout_mode: bool,
+    pub mode: Mode,
+    /// `Mode::Edit`: the file as loaded, to tell whether it was modified.
+    pub edit_original: String,
+    /// When cancel was last pressed on a modified file; a second press
+    /// within `MESSAGE_TTL` discards the changes.
+    discard_armed: Option<Instant>,
     pub copy_on_submit: bool,
     /// Config changed since the last deploy (`deploy_on_startup = notify`).
     pub deploy_hint: bool,
@@ -102,7 +121,9 @@ impl<E: ImeEngine> App<E> {
             copied: None,
             show_help: false,
             help_scroll: 0,
-            stdout_mode: false,
+            mode: Mode::Scratch,
+            edit_original: String::new(),
+            discard_armed: None,
             copy_on_submit: true,
             deploy_hint: false,
             secondary: false,
@@ -118,6 +139,13 @@ impl<E: ImeEngine> App<E> {
             level,
             at: Instant::now(),
         });
+    }
+
+    /// Enters `Mode::Edit` with the file's text.
+    pub fn open_file(&mut self, text: &str) {
+        self.mode = Mode::Edit;
+        self.buffer.set_text(text);
+        self.edit_original = text.to_string();
     }
 
     fn refresh(&mut self) {
@@ -160,9 +188,11 @@ impl<E: ImeEngine> App<E> {
             }
             return;
         }
+        // Any key other than a second cancel disarms the discard prompt.
+        let armed = self.discard_armed.take();
 
         if let Some(action) = spec.and_then(|s| self.keymap.global.get(&s).copied()) {
-            self.global_action(action);
+            self.global_action(action, armed);
             return;
         }
         if self.engine.busy().is_some() {
@@ -174,11 +204,11 @@ impl<E: ImeEngine> App<E> {
                     self.history_action(action);
                 }
             }
-            Focus::Input => self.input_key(&ev, spec),
+            Focus::Input => self.input_key(&ev, spec, armed),
         }
     }
 
-    fn input_key(&mut self, ev: &KeyEvent, spec: Option<KeySpec>) {
+    fn input_key(&mut self, ev: &KeyEvent, spec: Option<KeySpec>, armed: Option<Instant>) {
         if let Some(target) = spec.and_then(|s| self.keymap.compat.get(&s).copied()) {
             for k in keys::compat_sequence(target) {
                 let out = self.engine.process_key(k);
@@ -197,7 +227,7 @@ impl<E: ImeEngine> App<E> {
             }
         }
         if let Some(action) = spec.and_then(|s| self.keymap.input.get(&s).copied()) {
-            self.input_action(action);
+            self.input_action(action, armed);
             return;
         }
         // Printable text rime left alone, e.g. in ascii mode.
@@ -210,15 +240,13 @@ impl<E: ImeEngine> App<E> {
         }
     }
 
-    fn global_action(&mut self, action: GlobalAction) {
+    fn global_action(&mut self, action: GlobalAction, armed: Option<Instant>) {
         match action {
-            GlobalAction::Quit => {
-                self.exit = Some(if self.stdout_mode {
-                    Exit::Cancel
-                } else {
-                    Exit::Quit
-                });
-            }
+            GlobalAction::Quit => match self.mode {
+                Mode::Scratch => self.exit = Some(Exit::Quit),
+                Mode::Stdout => self.exit = Some(Exit::Cancel),
+                Mode::Edit => self.discard(armed),
+            },
             GlobalAction::Help => {
                 self.show_help = true;
                 self.help_scroll = 0;
@@ -246,24 +274,37 @@ impl<E: ImeEngine> App<E> {
         self.refresh();
     }
 
-    fn input_action(&mut self, action: InputAction) {
+    /// `Mode::Edit`: exits without saving; a modified file needs a second
+    /// press.
+    fn discard(&mut self, armed: Option<Instant>) {
+        let confirmed = armed.is_some_and(|at| at.elapsed() <= MESSAGE_TTL);
+        if confirmed || self.buffer.text() == self.edit_original {
+            self.exit = Some(Exit::Cancel);
+        } else {
+            self.discard_armed = Some(Instant::now());
+            self.notify(Level::Warning, "文件已修改，再按一次放弃修改");
+        }
+    }
+
+    fn input_action(&mut self, action: InputAction, armed: Option<Instant>) {
         let b = &mut self.buffer;
         match action {
             InputAction::Submit => self.submit(),
             InputAction::Newline => b.newline(),
             InputAction::FocusHistory => {
-                if !self.snapshot.composing && !self.stdout_mode && !self.history.is_empty() {
+                if !self.snapshot.composing
+                    && self.mode == Mode::Scratch
+                    && !self.history.is_empty()
+                {
                     self.focus = Focus::History;
                     self.history_sel = self.history.len() - 1;
                 }
             }
-            InputAction::Cancel => {
-                if self.stdout_mode {
-                    self.exit = Some(Exit::Cancel);
-                } else {
-                    b.clear();
-                }
-            }
+            InputAction::Cancel => match self.mode {
+                Mode::Scratch => b.clear(),
+                Mode::Stdout => self.exit = Some(Exit::Cancel),
+                Mode::Edit => self.discard(armed),
+            },
             InputAction::Left => b.left(),
             InputAction::Right => b.right(),
             InputAction::PrevLine => b.prev_line(),
@@ -279,6 +320,14 @@ impl<E: ImeEngine> App<E> {
     }
 
     fn submit(&mut self) {
+        // Saving an empty file is legitimate, e.g. an emptied rebase todo.
+        // The file is not recorded in the history: it often carries template
+        // comments or a diff.
+        if self.mode == Mode::Edit {
+            self.effects
+                .push(Effect::Save(self.buffer.text().to_string()));
+            return;
+        }
         if self.buffer.is_empty() {
             return;
         }
@@ -290,7 +339,7 @@ impl<E: ImeEngine> App<E> {
             self.notify(Level::Error, format!("写入历史失败：{e}"));
         }
         self.history_sel = self.history.len().saturating_sub(1);
-        if self.stdout_mode {
+        if self.mode == Mode::Stdout {
             self.exit = Some(Exit::Submit(text));
         } else if self.copy_on_submit {
             self.effects.push(Effect::Copy(text));
@@ -573,7 +622,7 @@ mod tests {
     #[test]
     fn stdout_mode_exits_with_text() {
         let mut a = app();
-        a.stdout_mode = true;
+        a.mode = Mode::Stdout;
         typ(&mut a, "ab ");
         a.handle_key(key(KeyCode::Char('j'), KeyModifiers::CONTROL));
         typ(&mut a, "cd ");
@@ -581,7 +630,7 @@ mod tests {
         assert_eq!(a.exit, Some(Exit::Submit("AB\nCD".into())));
         assert!(a.effects.is_empty());
         let mut a = app();
-        a.stdout_mode = true;
+        a.mode = Mode::Stdout;
         press(&mut a, KeyCode::Esc);
         assert_eq!(a.exit, Some(Exit::Cancel));
     }
@@ -589,7 +638,7 @@ mod tests {
     #[test]
     fn esc_goes_to_rime_first() {
         let mut a = app();
-        a.stdout_mode = true;
+        a.mode = Mode::Stdout;
         typ(&mut a, "ni");
         press(&mut a, KeyCode::Esc);
         assert!(!a.snapshot.composing);
@@ -689,6 +738,71 @@ mod tests {
         assert!(a.snapshot.ascii_mode);
         a.mouse(click(50, 50)); // nothing there
         assert_eq!(a.buffer.text(), "NI");
+    }
+
+    fn edit_app(text: &str) -> App<Fake> {
+        let mut a = app();
+        a.open_file(text);
+        a
+    }
+
+    #[test]
+    fn edit_mode_saves_without_history() {
+        let mut a = edit_app("line\n");
+        assert_eq!(a.buffer.cursor(), 0);
+        typ(&mut a, "ab ");
+        press(&mut a, KeyCode::Enter);
+        assert_eq!(a.effects, vec![Effect::Save("ABline\n".into())]);
+        assert!(a.history.is_empty());
+        // The event loop sets the exit once the file is written.
+        assert!(a.exit.is_none());
+    }
+
+    #[test]
+    fn edit_mode_saves_empty_file() {
+        let mut a = edit_app("x");
+        a.handle_key(key(KeyCode::Char('k'), KeyModifiers::CONTROL));
+        press(&mut a, KeyCode::Enter);
+        assert_eq!(a.effects, vec![Effect::Save(String::new())]);
+    }
+
+    #[test]
+    fn edit_mode_unmodified_cancels_at_once() {
+        let mut a = edit_app("x");
+        press(&mut a, KeyCode::Esc);
+        assert_eq!(a.exit, Some(Exit::Cancel));
+        let mut a = edit_app("x");
+        a.handle_key(key(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert_eq!(a.exit, Some(Exit::Cancel));
+    }
+
+    #[test]
+    fn edit_mode_modified_cancel_needs_second_press() {
+        let mut a = edit_app("x");
+        typ(&mut a, "ab ");
+        press(&mut a, KeyCode::Esc);
+        assert!(a.exit.is_none());
+        assert_eq!(a.message.as_ref().map(|m| m.level), Some(Level::Warning));
+        press(&mut a, KeyCode::Esc);
+        assert_eq!(a.exit, Some(Exit::Cancel));
+
+        // Another key in between disarms the prompt; Ctrl+C counts too.
+        let mut a = edit_app("x");
+        typ(&mut a, "ab ");
+        press(&mut a, KeyCode::Esc);
+        a.handle_key(key(KeyCode::Char('a'), KeyModifiers::CONTROL));
+        press(&mut a, KeyCode::Esc);
+        assert!(a.exit.is_none());
+        a.handle_key(key(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert_eq!(a.exit, Some(Exit::Cancel));
+    }
+
+    #[test]
+    fn edit_mode_has_no_history_focus() {
+        let mut a = edit_app("");
+        a.history.push("old".into(), 0).unwrap();
+        press(&mut a, KeyCode::Tab);
+        assert_eq!(a.focus, Focus::Input);
     }
 
     #[test]

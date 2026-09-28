@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end tests: runs the real duanyan binary in tmux panes (a real pty
 # and terminal emulator), sends keys, and asserts on the rendered screen,
-# the tmux clipboard (OSC 52) and --stdout output.
+# the tmux clipboard (OSC 52), --stdout output and edited files.
 #
 # Run inside `nix develop` (provides tmux, librime and rime-data):
 #   nix develop -c scripts/e2e.sh
@@ -220,6 +220,79 @@ t send-keys -t e2e:bash Enter
 wait_for e2e:bash "bash> echo 中文你好ab" && echo "ok: [bash] text inserted at the cursor"
 t send-keys -t e2e:bash -l "!"
 wait_for e2e:bash "bash> echo 中文你好!ab" && echo "ok: [bash] cursor after the inserted text"
+
+# edit_pane NAME FILE: opens FILE in duanyan from a shell pane that prints
+# the exit status afterwards; waits for the edit-mode status hints.
+edit_pane() {
+    shell_pane "$1"
+    t send-keys -t "e2e:$1" -l "$tmp/duanyan $2; echo code=\$?"
+    t send-keys -t "e2e:$1" Enter
+    wait_for "e2e:$1" "Enter  保存"
+}
+
+step "edit FILE: tabs shown, typing and Enter save with 0"
+printf 'hello\n#\tcomment\n' >"$tmp/edit1.txt"
+edit_pane ed1 "$tmp/edit1.txt"
+wait_for e2e:ed1 "#       comment" && echo "ok: tab expanded to the next tab stop"
+t send-keys -t e2e:ed1 -l "nihao "
+wait_for e2e:ed1 "你好hello"
+t send-keys -t e2e:ed1 Enter
+wait_for e2e:ed1 "code=0" && echo "ok: save status"
+check "saved file" "$(cat "$tmp/edit1.txt"; echo .)" $'你好hello\n#\tcomment\n.'
+
+step "edit FILE: esc on a modified file asks again, then exits 1"
+edit_pane ed2 "$tmp/edit1.txt"
+t send-keys -t e2e:ed2 -l "nihao "
+wait_for e2e:ed2 "你好你好hello"
+t send-keys -t e2e:ed2 Escape
+wait_for e2e:ed2 "再按一次放弃修改" && echo "ok: discard prompt"
+t send-keys -t e2e:ed2 Escape
+wait_for e2e:ed2 "code=1" && echo "ok: discard status"
+check "discarded file unchanged" "$(cat "$tmp/edit1.txt"; echo .)" $'你好hello\n#\tcomment\n.'
+
+step "edit FILE: a missing file is created on save"
+edit_pane ed3 "$tmp/new.txt"
+t send-keys -t e2e:ed3 -l "nihao "
+wait_for e2e:ed3 "你好"
+t send-keys -t e2e:ed3 Enter
+wait_for e2e:ed3 "code=0"
+check "created file" "$(cat "$tmp/new.txt"; echo .)" "你好."
+
+step "edit FILE: a failed save keeps the editor open"
+printf 'ro\n' >"$tmp/ro.txt"
+chmod 444 "$tmp/ro.txt"
+edit_pane ed4 "$tmp/ro.txt"
+t send-keys -t e2e:ed4 Enter
+wait_for e2e:ed4 "保存失败" && echo "ok: save error shown"
+t send-keys -t e2e:ed4 Escape
+wait_for e2e:ed4 "code=1" && echo "ok: unmodified file cancels at once"
+
+step "edit FILE: invalid UTF-8 fails before opening the UI"
+printf 'a\xff\n' >"$tmp/bad.txt"
+"$tmp/duanyan" "$tmp/bad.txt" </dev/null >/dev/null 2>"$tmp/bad.err"
+check "invalid UTF-8 status" "$?" 2
+[[ "$(cat "$tmp/bad.err")" == *"not valid UTF-8"* ]] && echo "ok: invalid UTF-8 message" ||
+    { echo "FAIL: invalid UTF-8 message: $(cat "$tmp/bad.err")" >&2; failures=$((failures + 1)); }
+
+step "edit FILE: git commit with GIT_EDITOR"
+git init -q "$tmp/repo"
+git -C "$tmp/repo" config user.name e2e
+git -C "$tmp/repo" config user.email e2e@example.com
+git -C "$tmp/repo" commit -q --allow-empty -m first
+gitcmd="cd $tmp/repo && GIT_EDITOR=$tmp/duanyan git commit -q --allow-empty; echo code=\$? count=\$(git rev-list --count HEAD) subject=\$(git log -1 --format=%s)"
+shell_pane git1
+t send-keys -t e2e:git1 -l "$gitcmd"
+t send-keys -t e2e:git1 Enter
+wait_for e2e:git1 "Enter  保存"
+t send-keys -t e2e:git1 -l "nihao "
+t send-keys -t e2e:git1 Enter
+wait_for e2e:git1 "code=0 count=2 subject=你好" && echo "ok: git commit message from duanyan"
+shell_pane git2
+t send-keys -t e2e:git2 -l "$gitcmd"
+t send-keys -t e2e:git2 Enter
+wait_for e2e:git2 "Enter  保存"
+t send-keys -t e2e:git2 Escape
+wait_for e2e:git2 "code=1 count=2" && echo "ok: cancel aborts the commit"
 
 step "nothing leaked to stderr"
 check "stderr.log is empty" "$(cat "$tmp/state/duanyan/log/stderr.log" 2>/dev/null)" ""
