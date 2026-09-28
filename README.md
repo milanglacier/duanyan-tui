@@ -115,5 +115,6 @@ command = ["wl-copy"]   # 不填则自动探测 wl-copy / xclip / xsel / pbcopy
 ```sh
 nix develop        # rust 工具链、librime、rime-data，并导出测试所需的环境变量
 cargo test         # 含真实 librime 的集成测试和 FFI 布局测试
+scripts/e2e.sh     # 在 tmux 里运行真实二进制的端到端测试
 cargo run -p rime-dl --example repl -- /tmp/rime-user   # 行式 REPL，手动调试 rime
 ```
