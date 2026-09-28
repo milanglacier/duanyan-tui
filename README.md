@@ -5,6 +5,14 @@ APP。在没有系统输入法的环境里（SSH、TTY）用 rime
 打字，提交后复制到剪贴板，或者作为选择器（类 fzf 的交互模式)把文字输出到
 stdout。
 
+inline 模式（`duanyan --stdout`），类似 fzf，在光标下方展开，提交后把文字输出到 stdout：
+
+![inline 模式](assets/inline.webp)
+
+全屏模式（`duanyan`）：
+
+![全屏模式](assets/fullscreen.webp)
+
 ## 安装
 
 运行需要 librime ≥ 1.8 和 rime 方案数据（如 `rime-data`）。
