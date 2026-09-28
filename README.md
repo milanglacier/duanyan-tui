@@ -17,6 +17,16 @@ inline 模式 + shell 集成（`^^<Tab>`，类似 fzf）：
 
 运行需要 librime ≥ 1.8 和 rime 方案数据（如 `rime-data`）。
 
+librime 和 rime 共享数据目录会自动探测，也可以在 `~/.config/duanyan/config.toml` 里手动指定：
+
+```toml
+[rime]
+librime_path = "/path/to/librime.so.1"     # macOS 上是 librime.1.dylib
+shared_data_dir = "/path/to/rime-data"
+```
+
+也可以用环境变量 `DUANYAN_LIBRIME_PATH` / `DUANYAN_RIME_SHARED_DIR` 指定，配置文件优先。`duanyan info` 可以查看实际使用的位置。
+
 ### Nix
 
 ```sh
@@ -41,8 +51,6 @@ duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
 ```sh
 cargo install --git https://github.com/milanglacier/duanyan-tui duanyan
 ```
-
-librime 与 rime 数据目录在运行时自动探测，`duanyan info` 可以查看实际解析到的位置。
 
 ### 从源码构建
 
@@ -143,7 +151,8 @@ mode = "dark"                # auto | dark | light
 | --- | --- |
 | 配置文件 | `~/.config/duanyan/config.toml` |
 | rime 用户目录 | `~/.config/duanyan/rime` |
-| rime 共享目录 | 自动探测（`/usr/share/rime-data` 等） |
+| librime | 自动探测，或 `[rime] librime_path` |
+| rime 共享目录 | 自动探测（`/usr/share/rime-data` 等），或 `[rime] shared_data_dir` |
 | 历史、日志、实例锁 | `~/.local/state/duanyan/` |
 
 共享目录对 rime 只读，可以与 fcitx5 等其它前端共用；用户目录必须独立。找不到共享目录时，把整套方案放进 `~/.config/duanyan/rime` 即可。
