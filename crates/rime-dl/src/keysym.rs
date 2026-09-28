@@ -238,13 +238,15 @@ pub fn keycode_by_name(name: &str) -> Option<u32> {
     }
     let mut chars = name.chars();
     if let (Some(c), None) = (chars.next(), chars.next())
-        && c.is_ascii_graphic() {
-            return Some(c as u32);
-        }
+        && c.is_ascii_graphic()
+    {
+        return Some(c as u32);
+    }
     if let Some(n) = name.strip_prefix('F').and_then(|n| n.parse::<u32>().ok())
-        && (1..=35).contains(&n) {
-            return Some(sym::F1 + n - 1);
-        }
+        && (1..=35).contains(&n)
+    {
+        return Some(sym::F1 + n - 1);
+    }
     None
 }
 

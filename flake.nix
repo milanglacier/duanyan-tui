@@ -27,6 +27,7 @@
           makeWrapper,
           symlinkJoin,
           librime,
+          rime-data,
           stdenv,
           # Rime data packages merged into the default shared data dir. Empty
           # means the shared data dir is auto-detected at runtime.
@@ -52,9 +53,11 @@
           };
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = [ makeWrapper ];
-          # Integration tests need librime and rime-data, provided through env.
+          # Integration tests need librime, rime-data and the C header.
           preCheck = ''
             export DUANYAN_LIBRIME_PATH=${libFile}
+            export DUANYAN_RIME_SHARED_DIR=${rime-data}/share/rime-data
+            export RIME_INCLUDE_DIR=${librime}/include
           '';
           postInstall = ''
             wrapProgram $out/bin/duanyan \

@@ -509,3 +509,49 @@ KeyEvent
   这类 compat 键的可靠性。
 - OSC 11 在不支持的终端上会超时；要控制启动延迟，并且不能把应答残留在输入流里。
 - 手写 FFI 结构体与未来 librime 版本的 ABI 漂移，靠 `data_size` 检查和布局测试兜底。
+
+## 14. 实现记录（与上文的偏差）
+
+M0–M6 已实现（2026-09-28），以下几处与原计划不同：
+
+- **没有独立的 engine 线程**。librime 的部署本来就在它自己的维护线程里异步进行，
+  所以主线程直接调用 librime，每个 tick 轮询 `is_maintenance_mode()`，完成后重建
+  会话。daemon 化的接缝保留为 `ImeEngine` trait 加拥有所有权的 `ImeSnapshot`。
+- **`--version --verbose` 改为 `duanyan info` 子命令**。
+- **inline 模式用 `Viewport::Fixed`**，文本区固定预留 3 行，超出后内部滚动。
+  ratatui 的 `Viewport::Inline` 通过 crossterm `cursor::position()` 查询光标，
+  而它把查询写到 stdout，会被 `$(...)` 吞掉；改为自己在 `/dev/tty` 上发 DSR
+  查询光标行。KKP 与 OSC 11 探测同理，都手写在 `/dev/tty` 上
+  （crossterm 的 `supports_keyboard_enhancement()` 也写 stdout）。
+- **glog 会把 ERROR 级别日志抄送 stderr**，与 `log_dir` 无关（`stderrthreshold`
+  默认为 ERROR）。TUI 模式在加载 librime 前设置 `GLOG_stderrthreshold=3`，并把
+  fd 2 重定向到 `log/stderr.log`，退出时恢复。
+- **不再单独调用 `run_task("installation_update")`**。deployer 模块在
+  `start_maintenance` 之前尚未加载，单独调用会报 unknown task；部署和同步也会自己
+  运行这个任务。
+- **配置错误按动作路径报告**（如 `keybinding.input.submit: ...`），不给行号：
+  用户配置先与默认值合并再反序列化，行号信息在合并时丢失。
+- **键位**：历史面板额外加了 `first`（g / home）和 `last`（G / end）；`next` / `prev`
+  也绑定了 ctrl+n / ctrl+p。默认值以 `crates/duanyan/src/default_config.toml` 为准。
+- **帮助页**支持 j/k、PageUp/PageDown 滚动，按其它键关闭。
+
+### 已验证
+
+- 单元测试 42 个；rime-dl 的 FFI 布局测试和真实 librime 集成测试；`nix build`
+  的 check 阶段在沙箱里也会跑集成测试。
+- 在 tmux（传统编码）里手动验证了：
+  - 首次部署、打字与候选、多行输入
+  - OSC 52 写入 tmux 缓冲区
+  - alt+l compat 切换中英
+  - 历史焦点、取回、F1 帮助
+  - `--stdout` 的输出与退出码（0 / 1）
+  - 从实例降级
+  - `notify` 提示与 F5 部署
+
+### 待验证
+
+- 在 kitty / foot / WezTerm / Ghostty 中实测 KKP：auto 探测、单独 Shift_L 切换、
+  release 事件转发。
+- Linux console。
+- macOS（Squirrel 的 librime 与 SharedSupport 探测）。
+- 鼠标点击（逻辑有单元测试，未在真实终端点过）。

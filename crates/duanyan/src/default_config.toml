@@ -1,0 +1,80 @@
+# Duanyan configuration: ~/.config/duanyan/config.toml
+#
+# Every value below is the default. The user file is merged over these
+# defaults: tables merge key by key, and a keybinding action you set replaces
+# that action's default keys (set it to [] to unbind).
+
+[general]
+# Copy the text to the clipboard when it is submitted.
+copy_on_submit = true
+
+[rime]
+# librime_path = "/path/to/librime.so.1"   # auto-detected when unset
+# shared_data_dir = "/path/to/rime-data"    # auto-detected when unset
+# user_data_dir = "~/.config/duanyan/rime"
+deploy_on_startup = "notify"                # notify | auto | never
+log_level = "warning"                       # info | warning | error
+
+[tui]
+kitty_keyboard = "auto"                     # auto | on | off
+mouse = true
+candidate_layout = "horizontal"             # horizontal | vertical
+show_candidate_comment = true
+
+[theme]
+mode = "auto"                               # auto | dark | light
+
+# Per-color overrides, e.g.:
+# [theme.colors]
+# accent = "#89b4fa"
+
+[clipboard]
+backend = "osc52"                           # osc52 | command
+# command = ["wl-copy"]                     # for backend = "command"; auto-detected when unset
+
+[history]
+persist = true
+max_entries = 1000
+# path = "~/.local/state/duanyan/history.jsonl"
+
+# Key notation: [ctrl+][alt+][super+][shift+]<key>. <key> is a single
+# character as the terminal produces it (case-sensitive: alt+K is not alt+k,
+# alt+: is not alt+;) or one of: enter tab backtab esc backspace delete insert
+# home end pageup pagedown up down left right space plus f1..f24.
+
+[keybinding.global]        # never sent to rime
+quit   = "ctrl+c"
+help   = "f1"
+deploy = "f5"
+sync   = "f6"
+
+[keybinding.compat]        # rime key = terminal key(s); translated and sent to rime
+Shift_L = "alt+l"          # bare modifiers are sent as press + release
+Shift_R = "alt+r"
+
+[keybinding.input]         # only when rime does not handle the key
+submit        = "enter"
+newline       = "ctrl+j"
+focus_history = "tab"      # only while nothing is being composed
+cancel        = "esc"      # --stdout: cancel and exit; otherwise clear the buffer
+left          = ["left", "ctrl+b"]
+right         = ["right", "ctrl+f"]
+prev_line     = ["ctrl+p", "up"]
+next_line     = ["ctrl+n", "down"]
+home          = ["home", "ctrl+a"]
+end           = ["end", "ctrl+e"]
+backspace     = ["backspace", "ctrl+h"]
+delete        = ["delete", "ctrl+d"]
+kill_word     = "ctrl+w"
+kill_to_start = "ctrl+u"
+kill_to_end   = "ctrl+k"
+
+[keybinding.history]       # history focus; keys never reach rime
+next        = ["j", "down", "ctrl+n"]
+prev        = ["k", "up", "ctrl+p"]
+first       = ["g", "home"]
+last        = ["G", "end"]
+copy        = "y"
+recall      = "enter"
+delete      = "d"
+focus_input = ["tab", "esc", "i"]
