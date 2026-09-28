@@ -70,13 +70,11 @@ tmux cannot cover everything:
 
 ## Bundled librime
 
-The release workflow also publishes `-bundled` archives: the binary plus
-`lib/` with librime, which `paths::librime_candidates` finds next to the
-executable. macOS uses librime's own universal build (version and sha256
-are pinned in `.github/workflows/release.yml`). librime publishes no Linux
-build, so `scripts/build-librime.sh` compiles a self-contained
-`librime.so.1` on Ubuntu 22.04. Its header shows how to run it locally in
-a container. When bumping librime, update the versions in both files.
+The release workflow also publishes `-bundled` archivesm. macOS uses librime's
+own universal build (version and sha256 are pinned in
+`.github/workflows/release.yml`). librime publishes no Linux build, so
+`scripts/build-librime.sh` compiles a self-contained `librime.so.1` on Ubuntu
+22.04. When bumping librime, update the versions in both files.
 
 ## Plans
 

@@ -45,29 +45,36 @@ duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
 
 ### 预编译二进制
 
-[Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，Linux 版本要求 glibc ≥ 2.35。每个平台有两种包：
+[Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，Linux 版本要求 glibc ≥ 2.35。每个平台有两种包，以 x86_64 Linux 为例：
 
 | 包 | 内容 |
 | --- | --- |
-| `duanyan-<版本>-<平台>-bundled.tar.gz` | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime |
-| `duanyan-<版本>-<平台>.tar.gz` | 只有二进制，需要系统已安装 librime |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz` | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu.tar.gz` | 只有二进制，需要系统已安装 librime |
 
-bundled 包解压后保持目录结构，端砚会使用自身旁边 `lib/` 里的 librime。把 `duanyan` 软链接进 `PATH` 即可：
+文件名由 `duanyan-${VERSION}-${TARGET}` 构成：`VERSION` 是 release tag（如
+`v0.1.3`），发布新版本后请替换为 Releases 上的最新版；`TARGET` 按平台替换即可。
+
+bundled 包解压后应保持目录结构，端砚会使用自身旁边 `lib/` 里的 librime。把 `duanyan` symlink 进 `PATH` 即可：
 
 ```sh
-tar -xzf duanyan-<版本>-<平台>-bundled.tar.gz -C ~/.local/share
-ln -s ~/.local/share/duanyan-<版本>-<平台>-bundled/duanyan ~/.local/bin/duanyan
+VERSION=v0.1.3  # 替换成 Releases 上的最新版本
+curl -L -O https://github.com/milanglacier/duanyan-tui/releases/download/${VERSION}/duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz
+tar -xzf duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz -C ~/.local/share
+ln -s ~/.local/share/duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled/duanyan ~/.local/bin/duanyan
+rm duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz
 ```
 
-也可以把 `duanyan` 放进 `<prefix>/bin`，把 `lib/` 里的文件放进 `<prefix>/lib`。
+也可以把 `duanyan` 放进 `~/.local/bin`，把 `lib/` 里的文件放进 `~/.local/lib`。
 
-bundled 包不含方案数据。下载 [rime-ice](https://github.com/iDvel/rime-ice) 或 [rime-frost](https://github.com/gaboolic/rime-frost)，把仓库内容直接放进 `~/.config/duanyan/rime`，再运行 `duanyan`，首次启动会自动部署：
+bundled 包不包含输入方案数据。想开箱即用、零配置的用户，建议直接使用
+[rime-ice](https://github.com/iDvel/rime-ice) 或
+[rime-frost](https://github.com/gaboolic/rime-frost)。将所选仓库的内容直接放到
+`~/.config/duanyan/rime`，再运行 `duanyan`，首次启动时会自动部署：
 
 ```sh
 git clone --depth 1 https://github.com/iDvel/rime-ice ~/.config/duanyan/rime
 ```
-
-macOS 上用浏览器下载的包带有隔离属性，需要先去掉：`xattr -dr com.apple.quarantine <解压出的目录>`。
 
 ### cargo
 
