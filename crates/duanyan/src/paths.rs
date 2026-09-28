@@ -45,6 +45,8 @@ pub fn expand_tilde(p: &Path) -> PathBuf {
 pub trait Env {
     fn var(&self, key: &str) -> Option<OsString>;
     fn exists(&self, p: &Path) -> bool;
+    /// Directory of the running executable, with symlinks resolved.
+    fn exe_dir(&self) -> Option<PathBuf>;
 }
 
 pub struct RealEnv;
@@ -55,6 +57,11 @@ impl Env for RealEnv {
     }
     fn exists(&self, p: &Path) -> bool {
         p.exists()
+    }
+    fn exe_dir(&self) -> Option<PathBuf> {
+        // `current_exe` does not resolve symlinks on macOS.
+        let exe = env::current_exe().and_then(std::fs::canonicalize).ok()?;
+        exe.parent().map(Path::to_owned)
     }
 }
 
@@ -69,6 +76,17 @@ pub fn librime_candidates(configured: Option<&Path>, env: &dyn Env) -> Vec<PathB
         out.push(PathBuf::from(p));
     }
     let name = rime_dl::default_library_name();
+    // A librime shipped next to the binary, as in the `-bundled` release
+    // archives or a `<prefix>/{bin,lib}` install.
+    if let Some(exe_dir) = env.exe_dir() {
+        let prefix = exe_dir.parent().map(Path::to_owned);
+        for dir in std::iter::once(exe_dir.clone()).chain(prefix) {
+            let p = dir.join("lib").join(name);
+            if env.exists(&p) {
+                out.push(p);
+            }
+        }
+    }
     out.push(PathBuf::from(name));
     let home = env.var("HOME").map(PathBuf::from).unwrap_or_else(home_dir);
     let user = env.var("USER").map(|u| u.to_string_lossy().into_owned());
@@ -143,6 +161,7 @@ mod tests {
     struct FakeEnv {
         vars: HashMap<&'static str, &'static str>,
         files: HashSet<PathBuf>,
+        exe_dir: Option<PathBuf>,
     }
 
     impl Env for FakeEnv {
@@ -151,6 +170,9 @@ mod tests {
         }
         fn exists(&self, p: &Path) -> bool {
             self.files.contains(p)
+        }
+        fn exe_dir(&self) -> Option<PathBuf> {
+            self.exe_dir.clone()
         }
     }
 
@@ -174,6 +196,28 @@ mod tests {
                 ]
             );
         }
+    }
+
+    #[test]
+    fn librime_bundled() {
+        let name = rime_dl::default_library_name();
+        let mut env = FakeEnv::default();
+        env.vars.insert("HOME", "/home/u");
+        env.exe_dir = Some(PathBuf::from("/opt/duanyan"));
+        // Next to the binary, as in the release archive.
+        env.files.insert(Path::new("/opt/duanyan/lib").join(name));
+        let c = librime_candidates(None, &env);
+        assert_eq!(c[0], Path::new("/opt/duanyan/lib").join(name));
+        assert_eq!(c[1], PathBuf::from(name));
+
+        // `<prefix>/bin/duanyan` with `<prefix>/lib/`, after the env var.
+        env.exe_dir = Some(PathBuf::from("/opt/bin"));
+        env.files.insert(Path::new("/opt/lib").join(name));
+        env.vars.insert("DUANYAN_LIBRIME_PATH", "/env/librime");
+        let c = librime_candidates(None, &env);
+        assert_eq!(c[0], PathBuf::from("/env/librime"));
+        assert_eq!(c[1], Path::new("/opt/lib").join(name));
+        assert_eq!(c[2], PathBuf::from(name));
     }
 
     #[test]

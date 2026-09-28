@@ -6,8 +6,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to upload the binaries to
-        required: true
+        description: >-
+          Release tag to upload the archives to. Leave empty to build the
+          selected branch and keep the archives as workflow artifacts.
+        required: false
+  # Builds librime on main when its recipe changes, so the cache it saves can
+  # be restored by release runs (caches from a tag are private to that tag).
+  push:
+    branches: [main]
+    paths:
+      - scripts/build-librime.sh
+      - .github/workflows/release.yml
 
 permissions:
   contents: write
@@ -15,27 +24,72 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  # The macOS archives use librime's own universal build. Keep the version in
+  # sync with scripts/build-librime.sh, which builds librime for Linux.
+  LIBRIME_VERSION: 1.17.0
+  LIBRIME_MACOS_ASSET: rime-33e7814-macOS-universal.tar.bz2
+  LIBRIME_MACOS_SHA256: 11d8dc663c6ec06d5ccb6111ba664a9e7b631b703ac6acd07cffbac664021850
 
 jobs:
+  librime-linux:
+    name: librime ${{ matrix.arch }}-linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-22.04
+          - arch: aarch64
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: librime
+          key: librime-${{ matrix.arch }}-linux-${{ hashFiles('scripts/build-librime.sh') }}
+
+      - name: Build librime
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          scripts/build-librime.sh librime
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: librime-${{ matrix.arch }}-linux
+          path: librime
+
   build:
     name: Build ${{ matrix.target }}
+    if: github.event_name != 'push'
+    needs: librime-linux
     strategy:
       fail-fast: false
       matrix:
         include:
           # Ubuntu 22.04 links against an older glibc, so the binaries run on
           # more distributions. musl is not an option: a static musl binary
-          # cannot dlopen the system librime.
+          # cannot dlopen librime.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
+            librime: x86_64-linux
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04-arm
+            librime: aarch64-linux
           - target: aarch64-apple-darwin
             os: macos-latest
+            librime: macos
           # Cross-compiled on the Apple Silicon runner; the build is pure Rust
-          # because librime is loaded at runtime.
+          # because librime is loaded at runtime. Its tests run under Rosetta.
           - target: x86_64-apple-darwin
             os: macos-latest
+            librime: macos
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -49,21 +103,100 @@ jobs:
       - name: Build
         run: cargo build --release --locked --package duanyan --target ${{ matrix.target }}
 
+      # The Linux build also provides the licenses and the opencc data for
+      # the tests, which are the same on macOS.
+      - uses: actions/download-artifact@v5
+        with:
+          name: librime-${{ matrix.librime == 'macos' && 'x86_64-linux' || matrix.librime }}
+          path: librime-linux
+
+      - name: Fetch librime for macOS
+        if: matrix.librime == 'macos'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$LIBRIME_VERSION" -R rime/librime -p "$LIBRIME_MACOS_ASSET"
+          echo "$LIBRIME_MACOS_SHA256  $LIBRIME_MACOS_ASSET" | shasum -a 256 -c
+          mkdir librime-macos
+          tar -xjf "$LIBRIME_MACOS_ASSET" -C librime-macos
+
       - name: Package
         id: package
         shell: bash
         run: |
-          name="duanyan-$TAG-${{ matrix.target }}"
+          name="duanyan-${TAG:-dev}-${{ matrix.target }}"
           mkdir "$name"
           cp "target/${{ matrix.target }}/release/duanyan" LICENSE README.md "$name/"
           tar -czf "$name.tar.gz" "$name"
-          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+
+          bundled="$name-bundled"
+          cp -R "$name" "$bundled"
+          mkdir "$bundled/lib"
+          cp -R librime-linux/licenses "$bundled/licenses"
+          if [[ "${{ matrix.librime }}" == macos ]]; then
+            # A regular file rather than the release's symlink chain.
+            cp -L librime-macos/dist/lib/librime.1.dylib "$bundled/lib/"
+            cp -R librime-macos/dist/lib/rime-plugins "$bundled/lib/"
+            echo "lib=$bundled/lib/librime.1.dylib" >> "$GITHUB_OUTPUT"
+            echo "include=librime-macos/dist/include" >> "$GITHUB_OUTPUT"
+          else
+            cp librime-linux/librime.so.1 "$bundled/lib/"
+            echo "lib=$bundled/lib/librime.so.1" >> "$GITHUB_OUTPUT"
+            echo "include=librime-linux/include" >> "$GITHUB_OUTPUT"
+          fi
+          tar -czf "$bundled.tar.gz" "$bundled"
+
+          for f in "$name.tar.gz" "$bundled.tar.gz"; do
+            shasum -a 256 "$f" > "$f.sha256"
+          done
           echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "bundled=$bundled" >> "$GITHUB_OUTPUT"
+
+      - name: Test the bundled librime
+        shell: bash
+        env:
+          BUNDLED: ${{ steps.package.outputs.bundled }}
+          LIB: ${{ steps.package.outputs.lib }}
+        run: |
+          # The binary finds the librime next to it without any configuration.
+          info=$(env -u DUANYAN_LIBRIME_PATH \
+            XDG_CONFIG_HOME="$RUNNER_TEMP/config" XDG_STATE_HOME="$RUNNER_TEMP/state" \
+            "$BUNDLED/duanyan" info)
+          echo "$info"
+          line=$(grep '^librime ' <<< "$info")
+          expected="$(cd "$BUNDLED/lib" && pwd -P)/$(basename "$LIB") ($LIBRIME_VERSION)"
+          if [[ "$line" != *" $expected" ]]; then
+            echo "::error::expected librime $expected, got: $line"
+            exit 1
+          fi
+
+          # Deploy and type with it, using a minimal set of rime data.
+          data="$RUNNER_TEMP/rime-data"
+          mkdir -p "$data"
+          for repo in rime-prelude rime-essay rime-luna-pinyin; do
+            git clone --depth 1 "https://github.com/rime/$repo.git" "$RUNNER_TEMP/$repo"
+            cp "$RUNNER_TEMP/$repo"/*.yaml "$RUNNER_TEMP/$repo"/*.txt "$data/" 2>/dev/null || true
+          done
+          cp -R librime-linux/share/opencc "$data/opencc"
+          DUANYAN_LIBRIME_PATH="$PWD/$LIB" \
+          DUANYAN_RIME_SHARED_DIR="$data" \
+          RIME_INCLUDE_DIR="$PWD/${{ steps.package.outputs.include }}" \
+            cargo test --locked --package rime-dl --target ${{ matrix.target }}
 
       - name: Upload to release
+        if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.package.outputs.name }}
+          BUNDLED: ${{ steps.package.outputs.bundled }}
         run: >
           gh release upload "$TAG" --clobber
-          "${{ steps.package.outputs.name }}.tar.gz"
-          "${{ steps.package.outputs.name }}.tar.gz.sha256"
+          "$NAME.tar.gz" "$NAME.tar.gz.sha256"
+          "$BUNDLED.tar.gz" "$BUNDLED.tar.gz.sha256"
+
+      - name: Upload as workflow artifacts
+        if: env.TAG == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: duanyan-${{ matrix.target }}
+          path: duanyan-*.tar.gz*

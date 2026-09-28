@@ -18,7 +18,7 @@ inline 模式 + shell 集成：
 
 ## 安装
 
-运行需要 librime ≥ 1.8 和 rime 方案数据（如 `rime-data`）。
+运行需要 librime ≥ 1.8 和 rime 方案数据（如 `rime-data`）。Releases 里的 bundled 包自带 librime，见[预编译二进制](#预编译二进制)。
 
 librime 和 rime 共享数据目录会自动探测，也可以在 `~/.config/duanyan/config.toml` 里手动指定：
 
@@ -45,7 +45,29 @@ duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
 
 ### 预编译二进制
 
-[Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，解压后把 `duanyan` 放进 `PATH` 即可。需要系统已安装 librime；Linux 版本要求 glibc ≥ 2.35。
+[Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，Linux 版本要求 glibc ≥ 2.35。每个平台有两种包：
+
+| 包 | 内容 |
+| --- | --- |
+| `duanyan-<版本>-<平台>-bundled.tar.gz` | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime |
+| `duanyan-<版本>-<平台>.tar.gz` | 只有二进制，需要系统已安装 librime |
+
+bundled 包解压后保持目录结构，端砚会使用自身旁边 `lib/` 里的 librime。把 `duanyan` 软链接进 `PATH` 即可：
+
+```sh
+tar -xzf duanyan-<版本>-<平台>-bundled.tar.gz -C ~/.local/share
+ln -s ~/.local/share/duanyan-<版本>-<平台>-bundled/duanyan ~/.local/bin/duanyan
+```
+
+也可以把 `duanyan` 放进 `<prefix>/bin`，把 `lib/` 里的文件放进 `<prefix>/lib`。
+
+bundled 包不含方案数据。下载 [rime-ice](https://github.com/iDvel/rime-ice) 或 [rime-frost](https://github.com/gaboolic/rime-frost)，把仓库内容直接放进 `~/.config/duanyan/rime`，再运行 `duanyan`，首次启动会自动部署：
+
+```sh
+git clone --depth 1 https://github.com/iDvel/rime-ice ~/.config/duanyan/rime
+```
+
+macOS 上用浏览器下载的包带有隔离属性，需要先去掉：`xattr -dr com.apple.quarantine <解压出的目录>`。
 
 ### cargo
 
@@ -165,7 +187,7 @@ mode = "dark"                # auto | dark | light
 | --- | --- |
 | 配置文件 | `~/.config/duanyan/config.toml` |
 | rime 用户目录 | `~/.config/duanyan/rime` |
-| librime | 自动探测，或 `[rime] librime_path` |
+| librime | 自动探测（bundled 包优先用自带的 `lib/`），或 `[rime] librime_path` |
 | rime 共享目录 | 自动探测（`/usr/share/rime-data` 等），或 `[rime] shared_data_dir` |
 | 历史、日志、实例锁 | `~/.local/state/duanyan/` |
 
