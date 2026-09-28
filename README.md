@@ -14,9 +14,12 @@
 ### Nix
 
 ```sh
-nix run .                 # 在仓库里直接运行
-nix profile install .     # 安装到 profile
+nix run github:milanglacier/duanyan-tui
+nix profile install github:milanglacier/duanyan-tui
 ```
+
+在 NixOS 或 home-manager 配置里，把本仓库加为 flake input，然后使用
+`inputs.duanyan.packages.${system}.default`。
 
 `packages.default` 的 wrapper 通过 `DUANYAN_LIBRIME_PATH` 注入 nix 的 librime。想同时打包方案数据时：
 
@@ -29,7 +32,7 @@ duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
 需要 librime ≥ 1.8。端砚在运行时 `dlopen` librime，不在编译期链接：
 
 ```sh
-cargo install --path crates/duanyan
+cargo install --git https://github.com/milanglacier/duanyan-tui duanyan
 ```
 
 librime 按以下顺序查找：
@@ -118,3 +121,7 @@ cargo test         # 含真实 librime 的集成测试和 FFI 布局测试
 scripts/e2e.sh     # 在 tmux 里运行真实二进制的端到端测试
 cargo run -p rime-dl --example repl -- /tmp/rime-user   # 行式 REPL，手动调试 rime
 ```
+
+## 许可证
+
+[GPL-3.0-or-later](LICENSE)
