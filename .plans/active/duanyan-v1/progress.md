@@ -60,6 +60,11 @@
   - 已有端砚在运行时，新开的端砚降级（不学习新词）
   - `notify` 提示与 F5 部署
 - 用户在 kitty 中手动验证了鼠标点击（候选、状态栏开关、历史条目）。
+- 用户在 macOS 上手动验证，运行正常。`duanyan info` 显示 `shared_data_dir`
+  自动探测到 Squirrel 的 `Contents/SharedSupport`；librime 用的是 Nix 包里的
+  librime 1.17.0（wrapper 预设了 `DUANYAN_LIBRIME_PATH`）。不经 wrapper 直接运行
+  `cargo build --release` 的产物时，`duanyan info` 显示自动探测并加载了 Squirrel 的
+  `Contents/Frameworks/librime.1.dylib`（1.16.0），用它打字也正常。
 - `scripts/e2e.sh` 在 tmux 中自动复现上述 tmux 手动验证的主要流程。
 
 ## 待验证
@@ -67,7 +72,6 @@
 - 在 foot / WezTerm / Ghostty 中实测 KKP。kitty（不经复用器）已由用户确认：KKP
   生效，单独 Shift 可以切换中英。
 - Linux console。
-- macOS（Squirrel 的 librime 与 SharedSupport 探测）。
 
 ## 已知上游问题
 
