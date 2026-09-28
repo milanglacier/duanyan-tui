@@ -5,13 +5,13 @@ APP。在没有系统输入法的环境里（SSH、TTY）用 rime
 打字，提交后复制到剪贴板，或者作为选择器（类 fzf 的交互模式)把文字输出到
 stdout。
 
-inline 模式（`duanyan --stdout`），类似 fzf，在光标下方展开，提交后把文字输出到 stdout：
+inline 模式 + shell 集成（`^^<Tab>`，类似 fzf）：
 
-![inline 模式](assets/inline.webp)
+![inline 模式](assets/inline.gif)
 
 全屏模式（`duanyan`）：
 
-![全屏模式](assets/fullscreen.webp)
+![全屏模式](assets/fullscreen.gif)
 
 ## 安装
 
