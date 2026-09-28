@@ -1,7 +1,8 @@
 # 端砚 Duanyan v1 计划
 
-基于 librime 的全屏 TUI 中文输入草稿板，Rust 实现。UI 原型见
-`references/design/端砚 Duanyan TUI.html`（Catppuccin Mocha / Latte 两套）。
+基于 librime 的全屏 TUI 中文输入草稿板，Rust 实现。UI 原型曾放在
+`references/design/端砚 Duanyan TUI.html`（Catppuccin Mocha / Latte 两套），
+已在提交 e7671f1 中删除，需要时可从该提交的父提交取回。
 
 ## 1. 产品定位
 
