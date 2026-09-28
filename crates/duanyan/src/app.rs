@@ -258,10 +258,7 @@ impl<E: ImeEngine> App<E> {
 
     fn start(&mut self, kind: Maintenance) {
         if self.secondary {
-            self.notify(
-                Level::Warning,
-                "已有端砚在运行，不能部署或同步",
-            );
+            self.notify(Level::Warning, "已有端砚在运行，不能部署或同步");
             return;
         }
         let started = match kind {
