@@ -5,14 +5,19 @@
 # linked statically and the lua, octagram and predict plugins merged in. The
 # result needs only glibc.
 #
+# The statically linked opencc looks for configs that are in neither rime data
+# dir in /usr/share/opencc, like a distribution's librime with its shared
+# libopencc. Otherwise it would look in this build's prefix.
+#
 # Usage: scripts/build-librime.sh <outdir>
 #
 # Writes <outdir>/librime.so.1, <outdir>/include (the C API headers),
 # <outdir>/licenses, <outdir>/version-info.txt and <outdir>/share/opencc (the
-# opencc dictionaries, for tests; rime data normally ships its own). Needs
-# git, curl, cmake, ninja, python3 and a C++17 compiler. Run it on the oldest
-# distribution the archive should support (the release uses Ubuntu 22.04),
-# since glibc symbol versions come from the build host. To try it locally:
+# opencc configs and dictionaries, which the archive ships as fallback rime
+# shared data). Needs git, curl, cmake, ninja, python3 and a C++17 compiler.
+# Run it on the oldest distribution the archive should support (the release
+# uses Ubuntu 22.04), since glibc symbol versions come from the build host. To
+# try it locally:
 #
 #   docker run --rm -v "$PWD:/src" -w /src ubuntu:22.04 bash -c \
 #     'apt-get update && apt-get install -y build-essential cmake ninja-build \
@@ -29,6 +34,8 @@ PLUGINS=(
     "lotem/librime-octagram dfcc151"
     "rime/librime-predict 920bd41"
 )
+# Where opencc looks for configs missing from the rime data dirs.
+OPENCC_DATA_DIR=/usr/share/opencc
 # Newest glibc symbol version the library may require; matches the glibc of
 # Ubuntu 22.04, which the release binaries are built on.
 MAX_GLIBC=2.35
@@ -87,7 +94,9 @@ cmake_dep glog -DWITH_GFLAGS=OFF -DWITH_GTEST=OFF -DWITH_UNWIND=none
 cmake_dep leveldb -DLEVELDB_BUILD_TESTS=OFF -DLEVELDB_BUILD_BENCHMARKS=OFF \
     -DHAVE_CRC32C=OFF -DHAVE_SNAPPY=OFF -DHAVE_TCMALLOC=OFF
 cmake_dep marisa-trie -DENABLE_TOOLS=OFF
-cmake_dep opencc
+# The quotes survive the shell that runs the compiler: PKGDATADIR is a string.
+cmake_dep opencc \
+    "-DCMAKE_CXX_FLAGS=$CXXFLAGS -UPKGDATADIR -DPKGDATADIR='\"$OPENCC_DATA_DIR\"'"
 cmake_dep yaml-cpp -DYAML_CPP_BUILD_CONTRIB=OFF -DYAML_CPP_BUILD_TESTS=OFF \
     -DYAML_CPP_BUILD_TOOLS=OFF
 
@@ -159,6 +168,11 @@ for so in "${needed[@]}"; do
         ;;
     esac
 done
+# The build prefix must not leak into opencc's data lookup.
+if ! grep -aqF "$OPENCC_DATA_DIR/" "$lib" || grep -aqF "$prefix/share/opencc" "$lib"; then
+    echo "error: opencc in $lib does not look for data in $OPENCC_DATA_DIR" >&2
+    exit 1
+fi
 glibc=$(objdump -T "$lib" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -n1)
 echo "newest GLIBC symbol: $glibc"
 if [[ $(printf '%s\n' "$glibc" "$MAX_GLIBC" | sort -V | tail -n1) != "$MAX_GLIBC" ]]; then

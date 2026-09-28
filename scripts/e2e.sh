@@ -294,6 +294,75 @@ wait_for e2e:git2 "Enter  保存"
 t send-keys -t e2e:git2 Escape
 wait_for e2e:git2 "code=1 count=2" && echo "ok: cancel aborts the commit"
 
+step "bundled: opencc data next to the binary is the last-resort shared data"
+# The `-bundled` archive layout, where share/rime-data holds only opencc data.
+# The nix librime would find a stock config such as s2t.json in its own opencc
+# package, so the schema uses a config that only the bundled dir has.
+system_rime=
+for d in /usr/share/rime-data /usr/local/share/rime-data /opt/homebrew/share/rime-data \
+    "/Library/Input Methods/Squirrel.app/Contents/SharedSupport"; do
+    [[ -e $d ]] && system_rime=$d
+done
+if [[ -n $system_rime ]]; then
+    echo "skip: $system_rime exists and takes precedence over the bundled data"
+else
+    bundle="$tmp/bundle"
+    buser="$tmp/bundled/config/duanyan/rime"
+    mkdir -p "$bundle/share/rime-data/opencc" "$buser" "$tmp/bundled/state" "$tmp/empty"
+    cp "$bin" "$bundle/duanyan"
+    # Launched through a symlink, like a copy linked into PATH.
+    ln -s "$bundle/duanyan" "$tmp/duanyan-bundled"
+    cat >"$bundle/share/rime-data/opencc/e2e_marker.json" <<'EOF'
+{
+  "name": "duanyan e2e marker",
+  "segmentation": {"type": "mmseg", "dict": {"type": "text", "file": "e2e_marker.txt"}},
+  "conversion_chain": [{"dict": {"type": "text", "file": "e2e_marker.txt"}}]
+}
+EOF
+    printf '你好\t包内标记\n' >"$bundle/share/rime-data/opencc/e2e_marker.txt"
+    # The user dir has everything else, as with rime-ice: the prelude and a
+    # one-word schema that converts through the marker config.
+    for f in default key_bindings punctuation symbols; do
+        cp "$DUANYAN_RIME_SHARED_DIR/$f.yaml" "$buser/"
+    done
+    printf 'patch:\n  schema_list:\n    - schema: e2e_bundled\n' >"$buser/default.custom.yaml"
+    cat >"$buser/e2e_bundled.schema.yaml" <<'EOF'
+schema:
+  schema_id: e2e_bundled
+  name: 端砚测试
+  version: "1"
+switches:
+  - name: marker
+    reset: 1
+    states: [关, 开]
+engine:
+  processors: [speller, selector, navigator, express_editor]
+  segmentors: [abc_segmentor, fallback_segmentor]
+  translators: [table_translator]
+  filters: [simplifier, uniquifier]
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+translator:
+  dictionary: e2e_bundled
+simplifier:
+  option_name: marker
+  opencc_config: e2e_marker.json
+EOF
+    # librime fails to compile a table with a single entry.
+    printf -- '---\nname: e2e_bundled\nversion: "1"\n...\n你好\tnihao\n世界\tshijie\n' \
+        >"$buser/e2e_bundled.dict.yaml"
+    benv="env -u DUANYAN_RIME_SHARED_DIR XDG_DATA_DIRS=$tmp/empty XDG_CONFIG_HOME=$tmp/bundled/config XDG_STATE_HOME=$tmp/bundled/state"
+
+    info=$($benv "$tmp/duanyan-bundled" info | grep '^shared_data_dir ')
+    check "info shows the bundled shared data dir" "$info" \
+        "shared_data_dir  $(cd "$bundle" && pwd -P)/share/rime-data (bundled opencc data)"
+    t new-window -d -n bundled "$benv $tmp/duanyan-bundled; sleep 600"
+    wait_for e2e:bundled "端砚测试" 60
+    t send-keys -t e2e:bundled -l "nihao"
+    wait_for e2e:bundled "包内标记" && echo "ok: librime converts with the bundled opencc config"
+    check "bundled stderr.log is empty" "$(cat "$tmp/bundled/state/duanyan/log/stderr.log" 2>/dev/null)" ""
+fi
+
 step "nothing leaked to stderr"
 check "stderr.log is empty" "$(cat "$tmp/state/duanyan/log/stderr.log" 2>/dev/null)" ""
 
