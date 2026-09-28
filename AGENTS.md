@@ -52,7 +52,7 @@ tmux cannot cover everything:
 - **Kitty keyboard protocol**: tmux does not forward lone modifier keys, so a
   bare Shift_L/Shift_R toggling ascii mode can only be verified by hand in
   kitty (or another KKP terminal) without a multiplexer. herdr has the same
-  limitation (see the plan's known upstream issues).
+  limitation (see the plan's `progress.md`).
 - **Mouse clicks**: not exercised by the script. The hit-testing logic is
   unit-tested in `app.rs`, and clicks were verified by hand in kitty.
 
@@ -67,7 +67,7 @@ tmux cannot cover everything:
   redirects to `$XDG_STATE_HOME/duanyan/log/stderr.log`. After an e2e run,
   that file should be empty.
 
-## Plan
+## Plans
 
-The design and decisions live in `.plans/active/duanyan-v1/plan.md`; section
-14 records where the implementation differs from the plan.
+Design plans live in `.plans/{active,completed}/<name>/plan.md`, with
+implementation progress in `progress.md` next to each plan.
