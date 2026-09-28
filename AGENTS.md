@@ -70,7 +70,7 @@ tmux cannot cover everything:
 
 ## Bundled librime
 
-The release workflow also publishes `-bundled` archivesm. macOS uses librime's
+The release workflow also publishes `-bundled` archives. macOS uses librime's
 own universal build (version and sha256 are pinned in
 `.github/workflows/release.yml`). librime publishes no Linux build, so
 `scripts/build-librime.sh` compiles a self-contained `librime.so.1` on Ubuntu
