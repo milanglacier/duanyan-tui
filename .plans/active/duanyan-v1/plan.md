@@ -550,8 +550,22 @@ M0–M6 已实现（2026-09-28），以下几处与原计划不同：
 
 ### 待验证
 
-- 在 kitty / foot / WezTerm / Ghostty 中实测 KKP：auto 探测、单独 Shift_L 切换、
-  release 事件转发。
+- 在 foot / WezTerm / Ghostty 中实测 KKP。kitty（不经复用器）已由用户确认：KKP
+  生效，单独 Shift 可以切换中英。
 - Linux console。
 - macOS（Squirrel 的 librime 与 SharedSupport 探测）。
 - 鼠标点击（逻辑有单元测试，未在真实终端点过）。
+
+### 已知上游问题
+
+- **herdr 不转发单独的修饰键**（herdr `0d5d6f1`，2026-09-27）。
+  - herdr 支持 KKP：回答 `CSI ? u` 查询，向外层终端申请 event types，并按每个 pane
+    申请的 flags 重新编码按键。所以端砚的 auto 探测判定为支持，这一判定本身没错。
+  - 但它的编码函数 `try_encode_csi_u`（`src/input/encode.rs`）只处理字符键和
+    Enter / Tab / 方向键等功能键。`KeyCode::Modifier` 落到 `_ => return None`，回退到
+    传统编码后得到空字节，Shift_L / Shift_R 的按下与松开被直接丢弃。因此在 herdr 里
+    单按 Shift 不能切换中英。
+  - 端砚无法绕过也无法检测：herdr 对 pane 的查询如实返回已启用的 flags。
+  - 应对：在 herdr 中使用 compat 映射（默认 alt+l / alt+r），它不依赖 KKP，已验证可用。
+  - 上游修复方向：pane 开启 REPORT_ALL_KEYS_AS_ESCAPE_CODES 时，为 `KeyCode::Modifier`
+    按 kitty 协议输出功能键编码（LeftShift 57441、RightShift 57447 等）。
