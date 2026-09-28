@@ -66,9 +66,8 @@
 | 发布产物在干净环境里使用包内 opencc | CI 冒烟测试与 integration 测试 |
 | 静态 librime + 系统 rime → `/usr/share/opencc` | 目前只做了本地容器手动验证；可选在 CI 的 Linux job 中 `apt install librime1 librime-data` 后用 `DUANYAN_RIME_SHARED_DIR=/usr/share/rime-data` 跑 integration 测试（未做） |
 
-## 待办
+## 收尾
 
-- 推送后用 `gh workflow run release.yml --ref bundled-opencc`（不填 tag）跑一次，
-  确认四个 target 通过（librime 缓存 key 变了，会重新构建 Linux 的 librime），
-  以及 macOS 冒烟测试里的 `shared_data_dir` 断言。
-- macOS 上手动确认一次：没装 Squirrel 时 rime-ice 的繁体切换可用。
+- `gh workflow run release.yml --ref bundled-opencc`（不填 tag）四个 target 均
+  通过（run 36490845818），随 v0.1.4 发布。
+- 未验证：macOS 上没装 Squirrel 时 rime-ice 的繁体切换，需要在 Mac 上手动确认。

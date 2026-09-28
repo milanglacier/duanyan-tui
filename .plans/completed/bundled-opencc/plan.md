@@ -176,7 +176,7 @@ CMake 的编译命令是 `<DEFINES> <INCLUDES> <FLAGS>`，这里的 `-U`/`-D` �
 ## 7. 文档
 
 包内的 opencc 数据是实现细节，不写进 README 和 AGENTS.md；代码和脚本的注释已
-足够说明。只在 `.plans/active/bundled-librime/plan.md` §1 关于 opencc 的结论处
+足够说明。只在 `.plans/completed/bundled-librime/plan.md` §1 关于 opencc 的结论处
 加注，指向本计划。
 
 ## 8. 验证

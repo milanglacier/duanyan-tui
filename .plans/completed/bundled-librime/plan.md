@@ -24,7 +24,7 @@ librime 1.17.0。二进制启动时优先探测包内的 librime，解压即可�
 - opencc 词典（`t2s.json` 等）只在 `user_data_dir/opencc` 和
   `shared_data_dir/opencc` 查找，属于 rime 数据，不随库附带（见 §7）。
   （后续：rime-ice 的繁体切换需要 `s2t.json`，bundled 包改为附带 opencc 数据，
-  见 `.plans/active/bundled-opencc/plan.md`。）
+  见 `.plans/completed/bundled-opencc/plan.md`。）
 
 ## 2. 产物
 

@@ -30,11 +30,8 @@
 - `dry_run` 输入改为「`tag` 留空」。
 - macOS 的 `licenses/` 和测试用 opencc 数据取自 x86_64 Linux 的 artifact。
 
-## 待办
+## 收尾
 
-- 推送分支后用 `gh workflow run release.yml --ref bundled-librime` 跑一次（不填
-  tag），确认四个 target 都通过，尤其是：
-  - aarch64 Linux 的构建（本地只验证了 x86_64）；
-  - x86_64-apple-darwin 在 Rosetta 下的测试。
-- macOS 插件加载（§4 第 3 点）需要在 Mac 上手动确认：rime-ice 的 `rq` 能出
-  日期，rime 日志中没有 `error loading plugin`。
+- `release.yml` 四个 target 均已通过，随 v0.1.3 发布。
+- 未验证：macOS 插件加载（§4 第 3 点）仍需在 Mac 上手动确认 rime-ice 的 `rq`
+  能出日期，rime 日志中没有 `error loading plugin`。
