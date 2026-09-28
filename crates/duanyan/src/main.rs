@@ -392,11 +392,11 @@ fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<Exi
             ),
             ("日志目录".into(), setup.log_dir.display().to_string()),
             (
-                "实例".into(),
+                "用户词典".into(),
                 if instance.is_primary() {
-                    "主实例"
+                    "学习新词"
                 } else {
-                    "从实例（用户词典只读）"
+                    "已有端砚在运行，不学习新词"
                 }
                 .into(),
             ),

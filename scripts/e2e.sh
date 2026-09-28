@@ -111,7 +111,7 @@ wait_for e2e:full "Tab  历史" && echo "ok: recall returns to input"
 
 step "secondary instance degrades"
 t new-window -d -n second "$tmp/duanyan; sleep 600"
-wait_for e2e:second "从实例" && echo "ok: secondary warning"
+wait_for e2e:second "已有端砚在运行，不学习新词" && echo "ok: secondary warning"
 t kill-window -t e2e:second
 
 step "fullscreen: ctrl+c quits with 0"

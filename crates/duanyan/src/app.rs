@@ -232,7 +232,7 @@ impl<E: ImeEngine> App<E> {
         if self.secondary {
             self.notify(
                 Level::Warning,
-                "另一个端砚实例正在运行，本实例不能部署或同步",
+                "已有端砚在运行，不能部署或同步",
             );
             return;
         }

@@ -489,7 +489,7 @@ fn draw_status<E: ImeEngine>(
     }
     if app.secondary {
         notes.push((
-            "⚠ 从实例 · 不学习新词".into(),
+            "⚠ 已有端砚在运行，不学习新词".into(),
             Style::default().fg(t.warning),
         ));
     }
