@@ -103,8 +103,8 @@ jobs:
       - name: Build
         run: cargo build --release --locked --package duanyan --target ${{ matrix.target }}
 
-      # The Linux build also provides the licenses and the opencc data for
-      # the tests, which are the same on macOS.
+      # The Linux build also provides the licenses and the opencc data, which
+      # are the same on macOS.
       - uses: actions/download-artifact@v5
         with:
           name: librime-${{ matrix.librime == 'macos' && 'x86_64-linux' || matrix.librime }}
@@ -133,6 +133,11 @@ jobs:
           cp -R "$name" "$bundled"
           mkdir "$bundled/lib"
           cp -R librime-linux/licenses "$bundled/licenses"
+          # Fallback shared data for when there is no system rime data: the
+          # opencc configs that schemas such as rime-ice expect from the
+          # frontend.
+          mkdir -p "$bundled/share/rime-data"
+          cp -R librime-linux/share/opencc "$bundled/share/rime-data/opencc"
           if [[ "${{ matrix.librime }}" == macos ]]; then
             # A regular file rather than the release's symlink chain.
             cp -L librime-macos/dist/lib/librime.1.dylib "$bundled/lib/"
@@ -158,8 +163,9 @@ jobs:
           BUNDLED: ${{ steps.package.outputs.bundled }}
           LIB: ${{ steps.package.outputs.lib }}
         run: |
-          # The binary finds the librime next to it without any configuration.
-          info=$(env -u DUANYAN_LIBRIME_PATH \
+          # The binary finds the librime and the opencc data next to it
+          # without any configuration.
+          info=$(env -u DUANYAN_LIBRIME_PATH -u DUANYAN_RIME_SHARED_DIR -u XDG_DATA_DIRS \
             XDG_CONFIG_HOME="$RUNNER_TEMP/config" XDG_STATE_HOME="$RUNNER_TEMP/state" \
             "$BUNDLED/duanyan" info)
           echo "$info"
@@ -167,6 +173,20 @@ jobs:
           expected="$(cd "$BUNDLED/lib" && pwd -P)/$(basename "$LIB") ($LIBRIME_VERSION)"
           if [[ "$line" != *" $expected" ]]; then
             echo "::error::expected librime $expected, got: $line"
+            exit 1
+          fi
+          line=$(grep '^shared_data_dir ' <<< "$info")
+          expected="$(cd "$BUNDLED/share/rime-data" && pwd -P) (bundled opencc data)"
+          system=(/usr/share/rime-data /usr/local/share/rime-data /opt/homebrew/share/rime-data
+            "/Library/Input Methods/Squirrel.app/Contents/SharedSupport")
+          for dir in "${system[@]}"; do
+            if [[ -e $dir ]]; then
+              echo "::warning::$dir exists and takes precedence; not checking the bundled opencc data"
+              expected=
+            fi
+          done
+          if [[ -n $expected && "$line" != *" $expected" ]]; then
+            echo "::error::expected shared_data_dir $expected, got: $line"
             exit 1
           fi
 
@@ -177,7 +197,8 @@ jobs:
             git clone --depth 1 "https://github.com/rime/$repo.git" "$RUNNER_TEMP/$repo"
             cp "$RUNNER_TEMP/$repo"/*.yaml "$RUNNER_TEMP/$repo"/*.txt "$data/" 2>/dev/null || true
           done
-          cp -R librime-linux/share/opencc "$data/opencc"
+          # The packaged opencc data, which luna_pinyin_simp converts with.
+          cp -R "$BUNDLED/share/rime-data/opencc" "$data/opencc"
           DUANYAN_LIBRIME_PATH="$PWD/$LIB" \
           DUANYAN_RIME_SHARED_DIR="$data" \
           RIME_INCLUDE_DIR="$PWD/${{ steps.package.outputs.include }}" \

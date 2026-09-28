@@ -65,7 +65,7 @@ ln -s ~/.local/share/duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled/duanyan
 rm duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz
 ```
 
-也可以把 `duanyan` 放进 `~/.local/bin`，把 `lib/` 里的文件放进 `~/.local/lib`。
+也可以把 `duanyan` 放进 `~/.local/bin`，把 `lib/`、`share/` 里的文件分别放进 `~/.local/lib`、`~/.local/share`。
 
 bundled 包不包含输入方案数据。想开箱即用、零配置的用户，建议直接使用
 [rime-ice](https://github.com/iDvel/rime-ice) 或
