@@ -1,11 +1,14 @@
 # 端砚 Duanyan
 
 基于 [librime](https://github.com/rime/librime) 的终端中文输入法
-APP。在没有系统输入法的环境里（SSH、TTY）用 rime
-打字，提交后复制到剪贴板，或者作为选择器（类 fzf 的交互模式)把文字输出到
-stdout。
+APP。在没有系统输入法的环境里（SSH、TTY）用 rime 打字，有四种用法：
 
-inline 模式 + shell 集成（`^^<Tab>`，类似 fzf）：
+- 直接运行 `duanyan`，提交后把文字复制到剪贴板；
+- 在 shell prompt 里直接当输入法用：输入 `^^` 再按 Tab 上屏（类似 fzf 的 `**<Tab>`）；
+- 把 `duanyan` 设为 `EDITOR`，在 `git commit`、`git rebase -i` 等场景里直接用 rime 编辑文件；
+- 用 `duanyan --stdout` 作为选择器（类 fzf 的交互模式），提交后把文字输出到 stdout。
+
+inline 模式 + shell 集成：
 
 ![inline 模式](assets/inline.gif)
 
