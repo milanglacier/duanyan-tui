@@ -68,6 +68,16 @@ tmux cannot cover everything:
   redirects to `$XDG_STATE_HOME/duanyan/log/stderr.log`. After an e2e run,
   that file should be empty.
 
+## Bundled librime
+
+The release workflow also publishes `-bundled` archives: the binary plus
+`lib/` with librime, which `paths::librime_candidates` finds next to the
+executable. macOS uses librime's own universal build (version and sha256
+are pinned in `.github/workflows/release.yml`). librime publishes no Linux
+build, so `scripts/build-librime.sh` compiles a self-contained
+`librime.so.1` on Ubuntu 22.04. Its header shows how to run it locally in
+a container. When bumping librime, update the versions in both files.
+
 ## Plans
 
 Design plans live in `.plans/{active,completed}/<name>/plan.md`, with
