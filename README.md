@@ -30,6 +30,10 @@ nix profile install github:milanglacier/duanyan-tui
 duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
 ```
 
+### 预编译二进制
+
+[Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，解压后把 `duanyan` 放进 `PATH` 即可。需要系统已安装 librime；Linux 版本要求 glibc ≥ 2.35。
+
 ### cargo
 
 需要系统已安装 librime：
