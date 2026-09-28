@@ -70,10 +70,27 @@ git commit -m "$(duanyan --stdout)"
 | `duanyan deploy [--full]` | 部署 rime 配置，`--full` 强制重建 |
 | `duanyan sync` | 同步用户词典 |
 | `duanyan info` | 显示实际使用的 librime 与数据目录 |
+| `duanyan init <zsh\|bash\|fish>` | 输出 shell 集成脚本 |
 | `duanyan --print-default-config` | 打印完整默认配置 |
 | `duanyan --config <path>` | 使用指定的配置文件 |
 
 首次运行会在 `~/.config/duanyan/rime` 初始化 rime 用户目录并自动部署，需要等待片刻。
+
+### Shell 集成
+
+类似 fzf 的 `**<Tab>`：在命令行里输入 `^^` 再按 Tab，就地打开 inline 界面，提交的文字替换掉 `^^`。
+
+```sh
+eval "$(duanyan init zsh)"    # ~/.zshrc
+duanyan init fish | source    # ~/.config/fish/config.fish
+```
+
+触发串可以用 `DUANYAN_TRIGGER` 修改。bash 不接管 Tab，需要自己绑定一个键：
+
+```bash
+eval "$(duanyan init bash)"
+bind -x '"\C-x\C-d": __duanyan_widget'
+```
 
 ## 配置
 

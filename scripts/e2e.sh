@@ -141,6 +141,86 @@ sleep 0.3
 t send-keys -t e2e:sh2 Escape # cancels
 wait_for e2e:sh2 "code=1 out=[]" && echo "ok: cancel status"
 
+step "--stdout: near the bottom, the output above stays visible"
+shell_pane sh3
+t send-keys -t e2e:sh3 -l "clear; seq 101 126; out=\$($tmp/duanyan --stdout); echo \"[\$out]\""
+t send-keys -t e2e:sh3 Enter
+wait_for e2e:sh3 "输出"
+t send-keys -t e2e:sh3 Escape
+# Clearing the inline area on exit would erase 126 if the UI covered it.
+wait_for e2e:sh3 $'126\n[]' && echo "ok: output above the inline UI kept"
+
+# Shell integration panes: a clean shell with $tmp (the duanyan wrapper) on
+# PATH and a fixed prompt.
+integration_pane() {
+    local name=$1 cmd=$2
+    t new-window -d -n "$name" \
+        "env -i PATH=\"$tmp:$PATH\" TERM=screen HOME=\"$tmp/home\" XDG_CONFIG_HOME=\"$tmp/home/.config\" $cmd"
+}
+mkdir -p "$tmp/home"
+
+# integration_checks PANE PROMPT: ^^ + Tab inserts, Esc keeps the line, Tab
+# without the trigger still completes.
+integration_checks() {
+    local pane=$1 prompt=$2
+    t send-keys -t "$pane" -l "echo ^^"
+    t send-keys -t "$pane" Tab
+    wait_for "$pane" "输出" || return
+    [[ "$(screen "$pane")" == *"$prompt echo ^^"* ]] && echo "ok: [$pane] prompt line kept while open" ||
+        { echo "FAIL: [$pane] prompt line drawn over" >&2; failures=$((failures + 1)); }
+    t send-keys -t "$pane" -l "nihao "
+    t send-keys -t "$pane" Enter
+    wait_for "$pane" "$prompt echo 你好" && echo "ok: [$pane] trigger replaced by the text"
+    t send-keys -t "$pane" -l "!"
+    wait_for "$pane" "$prompt echo 你好!" && echo "ok: [$pane] cursor after the inserted text"
+    t send-keys -t "$pane" Enter
+    wait_for "$pane" $'\n你好!' && echo "ok: [$pane] command runs"
+
+    t send-keys -t "$pane" -l "echo ^^"
+    t send-keys -t "$pane" Tab
+    wait_for "$pane" "输出" || return
+    t send-keys -t "$pane" Escape
+    sleep 0.5
+    t send-keys -t "$pane" -l "x"
+    wait_for "$pane" "$prompt echo ^^x" && echo "ok: [$pane] cancel keeps the line"
+    t send-keys -t "$pane" C-u
+
+    t send-keys -t "$pane" -l "echo duanyan-e2e-mark; seq 1 3; ech"
+    t send-keys -t "$pane" Tab
+    wait_for "$pane" "duanyan-e2e-mark; seq 1 3; echo" && echo "ok: [$pane] plain Tab still completes"
+    t send-keys -t "$pane" C-u
+}
+
+step "shell integration: zsh"
+integration_pane zsh "zsh -f"
+wait_for e2e:zsh "%"
+# /etc/zshenv is read even with -f and may reset PATH (NixOS does).
+t send-keys -t e2e:zsh -l "PATH=\"$tmp:\$PATH\"; PS1='zsh> '; eval \"\$(duanyan init zsh)\"; clear"
+t send-keys -t e2e:zsh Enter
+wait_for e2e:zsh "zsh> " && integration_checks e2e:zsh "zsh>"
+
+step "shell integration: fish"
+integration_pane fish "fish --no-config"
+wait_for e2e:fish ">"
+t send-keys -t e2e:fish -l "function fish_prompt; echo -n 'fish> '; end; duanyan init fish | source; clear"
+t send-keys -t e2e:fish Enter
+wait_for e2e:fish "fish> " && integration_checks e2e:fish "fish>"
+
+step "shell integration: bash widget"
+integration_pane bash "bash --norc --noprofile"
+wait_for e2e:bash "$"
+t send-keys -t e2e:bash -l "PS1='bash> '; eval \"\$(duanyan init bash)\"; bind -x '\"\\C-x\\C-d\": __duanyan_widget'; clear"
+t send-keys -t e2e:bash Enter
+wait_for e2e:bash "bash> "
+t send-keys -t e2e:bash -l "echo 中文ab"
+t send-keys -t e2e:bash Left Left C-x C-d
+wait_for e2e:bash "输出"
+t send-keys -t e2e:bash -l "nihao "
+t send-keys -t e2e:bash Enter
+wait_for e2e:bash "bash> echo 中文你好ab" && echo "ok: [bash] text inserted at the cursor"
+t send-keys -t e2e:bash -l "!"
+wait_for e2e:bash "bash> echo 中文你好!ab" && echo "ok: [bash] cursor after the inserted text"
+
 step "nothing leaked to stderr"
 check "stderr.log is empty" "$(cat "$tmp/state/duanyan/log/stderr.log" 2>/dev/null)" ""
 

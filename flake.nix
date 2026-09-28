@@ -90,6 +90,9 @@
             librime
             rime-data
             tmux # scripts/e2e.sh
+            zsh # scripts/e2e.sh: shell integration
+            fish
+            bashInteractive
           ];
           DUANYAN_LIBRIME_PATH = librimeFile pkgs;
           DUANYAN_RIME_SHARED_DIR = "${pkgs.rime-data}/share/rime-data";

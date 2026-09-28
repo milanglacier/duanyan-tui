@@ -73,47 +73,79 @@ fn query(tty: &mut File, request: &[u8], timeout: Duration, mut done: impl FnMut
     }
 }
 
-/// The cursor row via DSR (`CSI 6 n`) on the tty. crossterm's own
-/// `cursor::position` writes the request to stdout, which `--stdout` owns.
-pub fn cursor_row(tty: &mut File) -> Option<u16> {
-    let mut row = None;
+/// The cursor position as `(column, row)` via DSR (`CSI 6 n`) on the tty.
+/// crossterm's own `cursor::position` writes the request to stdout, which
+/// `--stdout` owns.
+pub fn cursor_position(tty: &mut File) -> Option<(u16, u16)> {
+    let mut pos = None;
     query(tty, b"\x1b[6n", Duration::from_millis(500), |buf| {
-        row = parse_cursor_report(buf);
-        row.is_some()
+        pos = parse_cursor_report(buf);
+        pos.is_some()
     });
-    row
+    pos
 }
 
-fn parse_cursor_report(buf: &[u8]) -> Option<u16> {
+fn parse_cursor_report(buf: &[u8]) -> Option<(u16, u16)> {
     let s = std::str::from_utf8(buf).ok()?;
     let start = s.rfind("\x1b[")?;
     let body = s[start + 2..].strip_suffix('R')?;
-    let (row, _col) = body.split_once(';')?;
-    row.parse::<u16>().ok()?.checked_sub(1)
+    let (row, col) = body.split_once(';')?;
+    Some((
+        col.parse::<u16>().ok()?.checked_sub(1)?,
+        row.parse::<u16>().ok()?.checked_sub(1)?,
+    ))
+}
+
+/// The rows reserved for the inline UI and where the cursor returns on exit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Inline {
+    pub area: Rect,
+    /// `(column, row)` of the cursor before the UI opened, after scrolling.
+    pub cursor: (u16, u16),
+    /// Lines to scroll the screen up to make room.
+    scroll: u16,
+}
+
+/// Places the inline UI below the cursor. A cursor at column 0 (a fresh
+/// line) is drawn over; otherwise, as when a shell widget runs from the
+/// prompt, the UI starts on the next line and the cursor's line is kept.
+fn place_inline(size: (u16, u16), cursor: (u16, u16), height: u16) -> Inline {
+    let (cols, rows) = size;
+    let (col, row) = cursor;
+    let keep_line = col > 0;
+    let height = height.min(rows.saturating_sub(keep_line as u16)).max(1);
+    let top = row + keep_line as u16;
+    let scroll = (top + height).saturating_sub(rows);
+    Inline {
+        area: Rect::new(0, top - scroll, cols, height),
+        cursor: (col, row.saturating_sub(scroll)),
+        scroll,
+    }
 }
 
 /// Reserves `height` rows below the cursor for the inline UI, scrolling the
 /// screen up when too close to the bottom.
-pub fn reserve_inline(tty: &mut File, height: u16) -> std::io::Result<Rect> {
-    let (cols, rows) = crossterm::terminal::size()?;
-    let height = height.min(rows);
-    let mut row = cursor_row(tty).unwrap_or(rows.saturating_sub(height));
-    if row + height > rows {
-        let scroll = row + height - rows;
-        tty.write_all("\n".repeat(scroll as usize).as_bytes())?;
+pub fn reserve_inline(tty: &mut File, height: u16) -> std::io::Result<Inline> {
+    let size = crossterm::terminal::size()?;
+    let cursor = cursor_position(tty).unwrap_or((0, size.1.saturating_sub(height)));
+    let inline = place_inline(size, cursor, height);
+    if inline.scroll > 0 {
+        // Line feeds only scroll from the last row.
+        tty.queue(cursor::MoveTo(0, size.1.saturating_sub(1)))?;
+        tty.write_all("\n".repeat(inline.scroll as usize).as_bytes())?;
         tty.flush()?;
-        row = rows - height;
     }
-    Ok(Rect::new(0, row, cols, height))
+    Ok(inline)
 }
 
-/// Blanks the inline area and leaves the cursor at its top-left.
-pub fn clear_inline(tty: &mut File, area: Rect) -> std::io::Result<()> {
+/// Blanks the inline area and puts the cursor back where it was.
+pub fn clear_inline(tty: &mut File, inline: &Inline) -> std::io::Result<()> {
+    let area = inline.area;
     for y in area.top()..area.bottom() {
         tty.queue(cursor::MoveTo(0, y))?
             .queue(Clear(ClearType::CurrentLine))?;
     }
-    tty.queue(cursor::MoveTo(0, area.y))?;
+    tty.queue(cursor::MoveTo(inline.cursor.0, inline.cursor.1))?;
     tty.flush()
 }
 
@@ -240,9 +272,44 @@ mod tests {
         ));
         let mut p = Probe::default();
         assert!(parse_replies(b"\x1b[?65;4;1c", &mut p));
-        assert_eq!(parse_cursor_report(b"\x1b[12;1R"), Some(11));
+        assert_eq!(parse_cursor_report(b"\x1b[12;1R"), Some((0, 11)));
+        assert_eq!(parse_cursor_report(b"\x1b[12;7R"), Some((6, 11)));
         assert_eq!(parse_cursor_report(b"\x1b[12;1"), None);
         assert!(!p.kkp);
         assert!(p.background.is_none());
+    }
+
+    #[test]
+    fn inline_placement() {
+        let at = |x, y, h| place_inline((80, 30), (x, y), h);
+        // Fresh line: draw from the cursor row, no scrolling.
+        let p = at(0, 5, 6);
+        assert_eq!(
+            (p.area, p.cursor, p.scroll),
+            (Rect::new(0, 5, 80, 6), (0, 5), 0)
+        );
+        // Mid-line: keep the cursor's line.
+        let p = at(12, 5, 6);
+        assert_eq!(
+            (p.area, p.cursor, p.scroll),
+            (Rect::new(0, 6, 80, 6), (12, 5), 0)
+        );
+        // Near the bottom: scroll, and the cursor moves up with the text.
+        let p = at(12, 27, 6);
+        assert_eq!(
+            (p.area, p.cursor, p.scroll),
+            (Rect::new(0, 24, 80, 6), (12, 23), 4)
+        );
+        let p = at(0, 29, 6);
+        assert_eq!(
+            (p.area, p.cursor, p.scroll),
+            (Rect::new(0, 24, 80, 6), (0, 24), 5)
+        );
+        // Taller than the screen: the cursor's line still stays visible.
+        let p = at(12, 29, 40);
+        assert_eq!(
+            (p.area, p.cursor, p.scroll),
+            (Rect::new(0, 1, 80, 29), (12, 0), 29)
+        );
     }
 }

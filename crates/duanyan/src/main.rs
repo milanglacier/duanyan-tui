@@ -64,6 +64,28 @@ enum Command {
     Sync,
     /// Show the resolved librime and data directories.
     Info,
+    /// Print the shell integration script: `^^` then Tab opens duanyan.
+    Init {
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum Shell {
+    Zsh,
+    Bash,
+    Fish,
+}
+
+impl Shell {
+    fn script(self) -> &'static str {
+        match self {
+            Shell::Zsh => include_str!("shell/duanyan.zsh"),
+            Shell::Bash => include_str!("shell/duanyan.bash"),
+            Shell::Fish => include_str!("shell/duanyan.fish"),
+        }
+    }
 }
 
 /// Everything resolved from config and environment before touching rime.
@@ -172,11 +194,16 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> anyhow::Result<ExitCode> {
+    if let Some(Command::Init { shell }) = cli.command {
+        print!("{}", shell.script());
+        return Ok(ExitCode::SUCCESS);
+    }
     let setup = Setup::resolve(&cli)?;
     match cli.command {
         Some(Command::Info) => info(&setup),
         Some(Command::Deploy { full }) => maintenance(&setup, Some(full)),
         Some(Command::Sync) => maintenance(&setup, None),
+        Some(Command::Init { .. }) => unreachable!(),
         None => tui(&setup, cli.stdout, cli.fullscreen),
     }
 }
@@ -413,7 +440,7 @@ fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<Exi
         None
     };
     let viewport = match inline_area {
-        Some(area) => Viewport::Fixed(area),
+        Some(inline) => Viewport::Fixed(inline.area),
         None => Viewport::Fullscreen,
     };
     let backend = CrosstermBackend::new(tty.try_clone()?);
@@ -434,8 +461,8 @@ fn tui(setup: &Setup, stdout_mode: bool, fullscreen: bool) -> anyhow::Result<Exi
     let result = event_loop(&mut terminal, &mut app, &ctx, &clipboard, &mut tty);
 
     drop(terminal);
-    if let Some(area) = inline_area {
-        let _ = tty::clear_inline(&mut tty, area);
+    if let Some(inline) = &inline_area {
+        let _ = tty::clear_inline(&mut tty, inline);
     }
     tty::restore(modes);
     let _ = std::panic::take_hook();

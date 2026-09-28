@@ -3,7 +3,8 @@
 ## Build and test
 
 Run everything inside the devShell, which provides the Rust toolchain,
-librime, rime-data and tmux, and exports `DUANYAN_LIBRIME_PATH`,
+librime, rime-data, tmux and the shells for the integration tests
+(zsh, fish, bash), and exports `DUANYAN_LIBRIME_PATH`,
 `DUANYAN_RIME_SHARED_DIR` and `RIME_INCLUDE_DIR`:
 
 ```sh
