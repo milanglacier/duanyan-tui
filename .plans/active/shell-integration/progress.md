@@ -4,7 +4,7 @@
 
 ## 状态
 
-全部完成，尚未提交。
+全部完成，已提交到 `shell-integration` 分支。
 
 - `duanyan init <zsh|bash|fish>`，脚本在 `crates/duanyan/src/shell/`。
 - inline 界面：光标不在行首时从下一行开始画，退出后光标回到原来的行和列
@@ -29,6 +29,7 @@
     （bash 5.3）。
   - `--stdout` 在屏幕靠下（非最后一行）打开时，上方输出不被覆盖。用改动前的代码跑
     这一项会失败，确认了原来的滚屏问题。
+- 用户在自己日常使用的 zsh 里手动验证：`^^` + Tab 打开端砚，提交的文字正确插入命令行。
 - e2e 注意：NixOS 的 `/etc/zshenv` 即使 `zsh -f` 也会读取并重置 `PATH`，
   所以 zsh 窗格里要重新把 wrapper 目录加到 `PATH`。
 
