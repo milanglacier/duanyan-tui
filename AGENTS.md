@@ -87,6 +87,7 @@ implementation progress in `progress.md` next to each plan.
 - `README.md` is for users: installing, configuring and using duanyan. Keep
   implementation details out of it, such as what the release archives bundle
   internally, lookup internals or build flags.
-- Update this file for nontrivial decisions and for anything the code and
-  scripts cannot explain themselves, such as pitfalls, constraints or how to
-  test. Do not restate what the code or its comments already say.
+- Update AGENTS.md (symlinked to CLAUDE.md) for nontrivial decisions and for
+  anything the code and scripts cannot explain themselves, such as pitfalls,
+  constraints or how to test. Do not restate what the code or its comments
+  already say.
