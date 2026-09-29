@@ -284,6 +284,30 @@ t send-keys -t e2e:ed1 Enter
 wait_for e2e:ed1 "code=0" && echo "ok: save status"
 check "saved file" "$(cat "$tmp/edit1.txt"; echo .)" $'你好hello\n#\tcomment\n.'
 
+# row_of PANE TEXT: the 0-based screen row where TEXT first appears.
+row_of() { screen "$1" | grep -n -F -m1 -- "$2" | cut -d: -f1 | awk '{ print $1 - 1 }'; }
+
+step "edit FILE: candidates float next to the cursor"
+seq -f 'line %g' 1 40 >"$tmp/long.txt"
+edit_pane ed5 "$tmp/long.txt"
+t send-keys -t e2e:ed5 Down End
+t send-keys -t e2e:ed5 -l "nihao"
+# The box's top border sits between the cursor row and the candidates.
+wait_for e2e:ed5 "1 你好" &&
+    check "candidates two rows below the cursor" \
+        "$(($(row_of e2e:ed5 "1 你好") - $(row_of e2e:ed5 "line 2ni hao")))" 2
+t send-keys -t e2e:ed5 -l " "
+wait_for e2e:ed5 "line 2你好"
+t send-keys -t e2e:ed5 "M->"
+t send-keys -t e2e:ed5 -l "nihao"
+wait_for e2e:ed5 "1 你好" &&
+    check "candidates above the cursor at the bottom" \
+        "$(($(row_of e2e:ed5 "ni hao") - $(row_of e2e:ed5 "1 你好")))" 2
+t send-keys -t e2e:ed5 -l " "
+t send-keys -t e2e:ed5 Enter
+wait_for e2e:ed5 "code=0"
+check "saved long file" "$(sed -n '2p;$p' "$tmp/long.txt")" $'line 2你好\n你好'
+
 step "edit FILE: esc on a modified file asks again, then exits 1"
 edit_pane ed2 "$tmp/edit1.txt"
 t send-keys -t e2e:ed2 -l "nihao "

@@ -14,7 +14,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::{App, CellHit, Focus, HitMap, Level, Mode, RowHit, TextHits};
 use crate::buffer::cell;
 use crate::config::{CandidateLayout, GlobalAction, HistoryAction, InputAction};
-use crate::engine::{ImeEngine, Maintenance, Preedit};
+use crate::engine::{Candidate, ImeEngine, ImeSnapshot, Maintenance, Preedit};
 use crate::keys::KeySpec;
 use crate::theme::Theme;
 
@@ -155,11 +155,8 @@ fn draw_fullscreen<E: ImeEngine>(
     if content.height == 0 {
         return;
     }
-    let text_rows = if edit {
-        content.height.saturating_sub(cand_rows).max(1)
-    } else {
-        text_rows
-    };
+    // Editing a file, the candidates float over the text instead.
+    let text_rows = if edit { content.height } else { text_rows };
     let text_area = Rect::new(
         content.x + 1,
         content.y,
@@ -180,13 +177,24 @@ fn draw_fullscreen<E: ImeEngine>(
             .collect(),
         end: app.buffer.text().len(),
     });
-    let cand_area = Rect::new(
-        content.x + 1,
-        text_area.bottom(),
-        content.width.saturating_sub(2),
-        content.bottom().saturating_sub(text_area.bottom()),
-    );
-    draw_candidates(f, app, ctx, cand_area, hits);
+    if edit {
+        // Under the preedit start, unless the preedit wraps.
+        let (crow, _) = layout.cursor;
+        let col = match layout.preedit_start {
+            Some((row, col)) if row == crow => col,
+            _ => 0,
+        };
+        let anchor = Position::new(text_area.x + col, text_area.y + (crow - offset) as u16);
+        draw_candidate_popup(f, app, ctx, anchor, content, hits);
+    } else {
+        let cand_area = Rect::new(
+            content.x + 1,
+            text_area.bottom(),
+            content.width.saturating_sub(2),
+            content.bottom().saturating_sub(text_area.bottom()),
+        );
+        draw_candidates(f, app, ctx, cand_area, hits);
+    }
     draw_status(f, app, ctx, status, hits);
 }
 
@@ -223,6 +231,8 @@ struct TextLayout {
     /// Per row, where clicks put the cursor.
     hits: Vec<RowHit>,
     cursor: (usize, u16),
+    /// Where the preedit starts, if there is one.
+    preedit_start: Option<(usize, u16)>,
 }
 
 fn layout_text<E: ImeEngine>(app: &App<E>, t: &Theme, width: u16) -> TextLayout {
@@ -261,7 +271,9 @@ fn layout_cells(
     let mut cells: Vec<Cell> = Vec::new();
     push_text(&mut cells, text, 0..cursor, style_at);
     let mut cursor_cell = cells.len();
+    let mut preedit_cell = None;
     if let Some(p) = preedit.filter(|p| !p.text.is_empty()) {
+        preedit_cell = Some(cells.len());
         cursor_cell = push_preedit(&mut cells, p, cursor, t);
     }
     push_text(&mut cells, text, cursor..text.len(), style_at);
@@ -271,9 +283,13 @@ fn layout_cells(
     let mut hits = vec![RowHit::default()];
     let mut col = 0usize;
     let mut cursor = (0, 0);
+    let mut preedit_start = None;
     for (i, c) in cells.iter().enumerate() {
         if i == cursor_cell {
             cursor = (rows.len() - 1, col as u16);
+        }
+        if Some(i) == preedit_cell {
+            preedit_start = Some((rows.len() - 1, col as u16));
         }
         if c.g == "\n" {
             hits.last_mut().unwrap().end = c.before;
@@ -290,6 +306,9 @@ fn layout_cells(
             col = 0;
             if i == cursor_cell {
                 cursor = (rows.len() - 1, 0);
+            }
+            if Some(i) == preedit_cell {
+                preedit_start = Some((rows.len() - 1, 0));
             }
             shown = cell(c.g, 0);
         }
@@ -319,7 +338,12 @@ fn layout_cells(
         }
         cursor = (rows.len() - 1, col as u16);
     }
-    TextLayout { rows, hits, cursor }
+    TextLayout {
+        rows,
+        hits,
+        cursor,
+        preedit_start,
+    }
 }
 
 /// Pushes one cell per grapheme of `text[range]`. A CRLF is one grapheme but
@@ -445,6 +469,115 @@ fn render_text<E: ImeEngine>(
     offset
 }
 
+/// Editing a file: the candidates in a box placed by `popup_rect` around
+/// `anchor`, the screen cell of the preedit start.
+fn draw_candidate_popup<E: ImeEngine>(
+    f: &mut Frame,
+    app: &App<E>,
+    ctx: &UiContext,
+    anchor: Position,
+    bounds: Rect,
+    hits: &mut HitMap,
+) {
+    if app.snapshot.candidates.is_empty() {
+        return;
+    }
+    let (w, h) = candidates_size(ctx, &app.snapshot);
+    // Borders on both sides and a column of padding on the right; each label
+    // already starts with a space.
+    let Some(rect) = popup_rect(anchor, (w + 3, h + 2), bounds) else {
+        return;
+    };
+    let t = &ctx.theme;
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(t.border))
+        .style(Style::default().bg(t.bg));
+    let inner = block.inner(rect);
+    f.render_widget(Clear, rect);
+    f.render_widget(block, rect);
+    let inner = Rect::new(
+        inner.x,
+        inner.y,
+        inner.width.saturating_sub(1),
+        inner.height,
+    );
+    draw_candidates(f, app, ctx, inner, hits);
+}
+
+/// Places a box of `size` below the row of `anchor`, starting a column left
+/// of it, inside `bounds`. It moves left to fit, goes above the row when only
+/// that side has room, and otherwise shrinks to the larger side; `None` when
+/// fewer than 3 rows (one inside the borders) remain.
+fn popup_rect(anchor: Position, size: (u16, u16), bounds: Rect) -> Option<Rect> {
+    let w = size.0.min(bounds.width);
+    let x = anchor
+        .x
+        .saturating_sub(1)
+        .max(bounds.x)
+        .min(bounds.right() - w);
+    let below = bounds.bottom().saturating_sub(anchor.y + 1);
+    let above = anchor.y.saturating_sub(bounds.y);
+    let (y, h) = if size.1 <= below || below >= above {
+        (anchor.y + 1, size.1.min(below))
+    } else {
+        let h = size.1.min(above);
+        (anchor.y - h, h)
+    };
+    (h >= 3).then(|| Rect::new(x, y, w, h))
+}
+
+fn candidate_spans<'a>(ctx: &UiContext, c: &'a Candidate, highlighted: bool) -> Vec<Span<'a>> {
+    let t = &ctx.theme;
+    let hl = Style::default()
+        .bg(t.candidate_hl_bg)
+        .fg(t.candidate_hl_fg)
+        .add_modifier(Modifier::BOLD);
+    let idx = Style::default().fg(t.candidate_index);
+    let text = Style::default().fg(t.text);
+    let mut spans = vec![
+        Span::styled(format!(" {} ", c.label), if highlighted { hl } else { idx }),
+        Span::styled(format!("{} ", c.text), if highlighted { hl } else { text }),
+    ];
+    if ctx.show_comment
+        && let Some(cm) = &c.comment
+    {
+        spans.push(Span::styled(
+            format!("{cm} "),
+            Style::default().fg(t.comment),
+        ));
+    }
+    spans
+}
+
+fn spans_width(spans: &[Span]) -> u16 {
+    spans.iter().map(|s| s.content.width() as u16).sum()
+}
+
+/// The (width, height) `draw_candidates` needs to show the whole page.
+fn candidates_size(ctx: &UiContext, snap: &ImeSnapshot) -> (u16, u16) {
+    let widths = snap
+        .candidates
+        .iter()
+        .map(|c| spans_width(&candidate_spans(ctx, c, false)));
+    let ind_w = page_indicator_width(snap);
+    match ctx.candidate_layout {
+        CandidateLayout::Horizontal => {
+            let n = snap.candidates.len() as u16;
+            (widths.sum::<u16>() + n.saturating_sub(1) + ind_w + 1, 1)
+        }
+        CandidateLayout::Vertical => (
+            widths.max().unwrap_or(0) + ind_w + 1,
+            candidate_rows(ctx, snap.candidates.len()),
+        ),
+    }
+}
+
+/// Width of the ‹ n › page indicator.
+fn page_indicator_width(snap: &ImeSnapshot) -> u16 {
+    format!(" {} ", snap.page_no + 1).width() as u16 + 2
+}
+
 fn draw_candidates<E: ImeEngine>(
     f: &mut Frame,
     app: &App<E>,
@@ -461,7 +594,7 @@ fn draw_candidates<E: ImeEngine>(
     let page = format!(" {} ", snap.page_no + 1);
     let dim = Style::default().fg(t.border);
     let on = Style::default().fg(t.subtext);
-    let ind_w = page.width() as u16 + 2;
+    let ind_w = page_indicator_width(snap);
     let ind = Rect::new(area.right().saturating_sub(ind_w), area.y, ind_w, 1);
     f.render_widget(
         Paragraph::new(Line::from(vec![
@@ -479,29 +612,12 @@ fn draw_candidates<E: ImeEngine>(
     }
     let avail = area.width.saturating_sub(ind_w + 1);
 
-    let hl = Style::default()
-        .bg(t.candidate_hl_bg)
-        .fg(t.candidate_hl_fg)
-        .add_modifier(Modifier::BOLD);
-    let idx = Style::default().fg(t.candidate_index);
-    let text = Style::default().fg(t.text);
-    let comment = Style::default().fg(t.comment);
-
     let vertical = ctx.candidate_layout == CandidateLayout::Vertical;
     let mut x = area.x;
     let mut y = area.y;
     for (i, c) in snap.candidates.iter().enumerate() {
-        let highlighted = i == snap.highlighted;
-        let mut spans = vec![
-            Span::styled(format!(" {} ", c.label), if highlighted { hl } else { idx }),
-            Span::styled(format!("{} ", c.text), if highlighted { hl } else { text }),
-        ];
-        if ctx.show_comment
-            && let Some(cm) = &c.comment
-        {
-            spans.push(Span::styled(format!("{cm} "), comment));
-        }
-        let w: u16 = spans.iter().map(|s| s.content.width() as u16).sum();
+        let spans = candidate_spans(ctx, c, i == snap.highlighted);
+        let w = spans_width(&spans);
         let row_limit = if vertical && y > area.y {
             area.width
         } else {
@@ -1113,6 +1229,64 @@ mod tests {
         // No blank rows at the bottom after the text shrinks.
         assert_eq!(scroll_offset(25, 28, 27, 10), 18);
         assert_eq!(scroll_offset(4, 3, 2, 10), 0);
+    }
+
+    #[test]
+    fn layout_records_preedit_start() {
+        let p = Preedit {
+            text: "nihao".into(),
+            cursor: 5,
+            ..Default::default()
+        };
+        let l = layout_cells("ab\ncd", 4, None, Some(&p), &Theme::MOCHA, 20);
+        assert_eq!(l.preedit_start, Some((1, 1)));
+        assert_eq!(l.cursor, (1, 6));
+        // A preedit wrapping as a whole starts on the next row.
+        let l = layout_cells("abcdefgh", 8, None, Some(&p), &Theme::MOCHA, 8);
+        assert_eq!(l.preedit_start, Some((1, 0)));
+        let l = layout_cells("ab", 2, None, None, &Theme::MOCHA, 20);
+        assert_eq!(l.preedit_start, None);
+    }
+
+    #[test]
+    fn popup_placement() {
+        let bounds = Rect::new(2, 1, 40, 20);
+        // Below the anchor row, one column left of it.
+        assert_eq!(
+            popup_rect(Position::new(10, 5), (20, 3), bounds),
+            Some(Rect::new(9, 6, 20, 3))
+        );
+        // Never left of the bounds.
+        assert_eq!(
+            popup_rect(Position::new(2, 5), (20, 3), bounds),
+            Some(Rect::new(2, 6, 20, 3))
+        );
+        // Moves left to fit, and is no wider than the bounds.
+        assert_eq!(
+            popup_rect(Position::new(35, 5), (20, 3), bounds),
+            Some(Rect::new(22, 6, 20, 3))
+        );
+        assert_eq!(
+            popup_rect(Position::new(35, 5), (50, 3), bounds),
+            Some(Rect::new(2, 6, 40, 3))
+        );
+        // Above the anchor row when only that side has room.
+        assert_eq!(
+            popup_rect(Position::new(10, 19), (20, 3), bounds),
+            Some(Rect::new(9, 16, 20, 3))
+        );
+        // Otherwise the larger side, shrunk.
+        assert_eq!(
+            popup_rect(Position::new(10, 12), (20, 12), bounds),
+            Some(Rect::new(9, 1, 20, 11))
+        );
+        assert_eq!(
+            popup_rect(Position::new(10, 8), (20, 12), bounds),
+            Some(Rect::new(9, 9, 20, 12))
+        );
+        // Nothing when neither side has 3 rows.
+        let short = Rect::new(0, 0, 40, 5);
+        assert_eq!(popup_rect(Position::new(0, 2), (20, 3), short), None);
     }
 
     #[test]
