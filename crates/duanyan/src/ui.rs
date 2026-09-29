@@ -1,5 +1,7 @@
 //! Rendering. `draw` returns the clickable regions it laid out.
 
+use std::ops::Range;
+
 use jiff::tz::TimeZone;
 use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
@@ -9,7 +11,7 @@ use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, Focus, HitMap, Level, Mode};
+use crate::app::{App, CellHit, Focus, HitMap, Level, Mode, RowHit, TextHits};
 use crate::buffer::cell;
 use crate::config::{CandidateLayout, GlobalAction, HistoryAction, InputAction};
 use crate::engine::{ImeEngine, Maintenance, Preedit};
@@ -164,7 +166,20 @@ fn draw_fullscreen<E: ImeEngine>(
         content.width.saturating_sub(2),
         text_rows.min(content.height),
     );
-    render_text(f, app, t, &layout, text_area, focused && !app.show_help);
+    let offset = render_text(f, app, t, &layout, text_area, focused && !app.show_help);
+    hits.text_scroll = offset;
+    hits.text = Some(TextHits {
+        area: Rect::new(content.x, text_area.y, content.width, text_area.height),
+        x: text_area.x,
+        rows: layout
+            .hits
+            .iter()
+            .skip(offset)
+            .take(text_area.height as usize)
+            .cloned()
+            .collect(),
+        end: app.buffer.text().len(),
+    });
     let cand_area = Rect::new(
         content.x + 1,
         text_area.bottom(),
@@ -189,7 +204,7 @@ fn draw_inline<E: ImeEngine>(
     // the status line.
     let text_rows = (layout.rows.len() as u16).clamp(1, INLINE_TEXT_ROWS);
     let text_area = Rect::new(area.x + 1, area.y, width, text_rows.min(area.height));
-    render_text(f, app, t, &layout, text_area, !app.show_help);
+    hits.text_scroll = render_text(f, app, t, &layout, text_area, !app.show_help);
     let status = Rect::new(area.x, area.bottom() - 1, area.width, 1);
     let cand_area = Rect::new(
         area.x + 1,
@@ -205,6 +220,8 @@ fn draw_inline<E: ImeEngine>(
 /// A laid-out (wrapped) view of buffer + preedit.
 struct TextLayout {
     rows: Vec<Vec<(String, Style)>>,
+    /// Per row, where clicks put the cursor.
+    hits: Vec<RowHit>,
     cursor: (usize, u16),
 }
 
@@ -212,84 +229,131 @@ fn layout_text<E: ImeEngine>(app: &App<E>, t: &Theme, width: u16) -> TextLayout 
     layout_cells(
         app.buffer.text(),
         app.buffer.cursor(),
+        app.selection.clone(),
         app.snapshot.preedit.as_ref(),
         t,
         width,
     )
 }
 
+/// A grapheme to lay out, with the buffer offsets before and after it.
+struct Cell<'a> {
+    g: &'a str,
+    style: Style,
+    before: usize,
+    after: usize,
+}
+
 fn layout_cells(
     text: &str,
     cursor: usize,
+    selection: Option<Range<usize>>,
     preedit: Option<&Preedit>,
     t: &Theme,
     width: u16,
 ) -> TextLayout {
-    let (before, after) = text.split_at(cursor);
     let normal = Style::default().fg(t.text);
-    let mut cells: Vec<(&str, Style)> = Vec::new();
-    push_text(&mut cells, before, normal);
+    let selected = normal.bg(t.selection_bg);
+    let style_at = |off: usize| match &selection {
+        Some(r) if r.contains(&off) => selected,
+        _ => normal,
+    };
+    let mut cells: Vec<Cell> = Vec::new();
+    push_text(&mut cells, text, 0..cursor, style_at);
     let mut cursor_cell = cells.len();
     if let Some(p) = preedit.filter(|p| !p.text.is_empty()) {
-        cursor_cell = push_preedit(&mut cells, p, t);
+        cursor_cell = push_preedit(&mut cells, p, cursor, t);
     }
-    push_text(&mut cells, after, normal);
+    push_text(&mut cells, text, cursor..text.len(), style_at);
 
     let width = width as usize;
     let mut rows: Vec<Vec<(String, Style)>> = vec![Vec::new()];
+    let mut hits = vec![RowHit::default()];
     let mut col = 0usize;
     let mut cursor = (0, 0);
-    for (i, (g, style)) in cells.iter().enumerate() {
+    for (i, c) in cells.iter().enumerate() {
         if i == cursor_cell {
             cursor = (rows.len() - 1, col as u16);
         }
-        if *g == "\n" {
+        if c.g == "\n" {
+            hits.last_mut().unwrap().end = c.before;
             rows.push(Vec::new());
+            hits.push(RowHit::default());
             col = 0;
             continue;
         }
-        let mut shown = cell(g, col);
+        let mut shown = cell(c.g, col);
         if col + shown.1 > width && col > 0 {
+            hits.last_mut().unwrap().end = c.before;
             rows.push(Vec::new());
+            hits.push(RowHit::default());
             col = 0;
             if i == cursor_cell {
                 cursor = (rows.len() - 1, 0);
             }
-            shown = cell(g, 0);
+            shown = cell(c.g, 0);
         }
         let (s, w) = shown;
         let row = rows.last_mut().unwrap();
         match row.last_mut() {
-            Some((text, st)) if *st == *style => text.push_str(&s),
-            _ => row.push((s.into_owned(), *style)),
+            Some((text, st)) if *st == c.style => text.push_str(&s),
+            _ => row.push((s.into_owned(), c.style)),
         }
+        hits.last_mut().unwrap().cells.push(CellHit {
+            col: col as u16,
+            width: w as u16,
+            before: c.before,
+            after: c.after,
+        });
         col += w;
     }
+    hits.last_mut().unwrap().end = text.len();
     if cursor_cell == cells.len() {
         if col >= width {
             rows.push(Vec::new());
+            hits.push(RowHit {
+                cells: Vec::new(),
+                end: text.len(),
+            });
             col = 0;
         }
         cursor = (rows.len() - 1, col as u16);
     }
-    TextLayout { rows, cursor }
+    TextLayout { rows, hits, cursor }
 }
 
-/// Pushes one cell per grapheme. A CRLF is one grapheme but two cells, so
-/// the `\n` still ends the row.
-fn push_text<'a>(cells: &mut Vec<(&'a str, Style)>, text: &'a str, style: Style) {
-    for g in text.graphemes(true) {
-        if g == "\r\n" {
-            cells.push((&g[..1], style));
-            cells.push((&g[1..], style));
+/// Pushes one cell per grapheme of `text[range]`. A CRLF is one grapheme but
+/// two cells, so the `\n` still ends the row; both cells cover the whole
+/// grapheme.
+fn push_text<'a>(
+    cells: &mut Vec<Cell<'a>>,
+    text: &'a str,
+    range: Range<usize>,
+    style_at: impl Fn(usize) -> Style,
+) {
+    let base = range.start;
+    for (i, g) in text[range].grapheme_indices(true) {
+        let (before, after) = (base + i, base + i + g.len());
+        let style = style_at(before);
+        let parts = if g == "\r\n" {
+            vec![&g[..1], &g[1..]]
         } else {
-            cells.push((g, style));
+            vec![g]
+        };
+        for g in parts {
+            cells.push(Cell {
+                g,
+                style,
+                before,
+                after,
+            });
         }
     }
 }
 
-/// Pushes preedit cells; returns the cell index of rime's caret.
-fn push_preedit<'a>(cells: &mut Vec<(&'a str, Style)>, p: &'a Preedit, t: &Theme) -> usize {
+/// Pushes preedit cells, which sit at buffer offset `at`; returns the cell
+/// index of rime's caret.
+fn push_preedit<'a>(cells: &mut Vec<Cell<'a>>, p: &'a Preedit, at: usize, t: &Theme) -> usize {
     let converted = Style::default().fg(t.preedit);
     let active = Style::default()
         .fg(t.text)
@@ -308,11 +372,24 @@ fn push_preedit<'a>(cells: &mut Vec<(&'a str, Style)>, p: &'a Preedit, t: &Theme
         } else {
             rest
         };
-        cells.push((g, style));
+        cells.push(Cell {
+            g,
+            style,
+            before: at,
+            after: at,
+        });
     }
     caret.unwrap_or(if p.cursor == 0 { start } else { cells.len() })
 }
 
+/// First row to show: the previous one, unless that leaves blank rows at the
+/// bottom or the cursor row out of view.
+fn scroll_offset(prev: usize, rows: usize, cursor_row: usize, height: usize) -> usize {
+    prev.min(rows.saturating_sub(height))
+        .clamp((cursor_row + 1).saturating_sub(height), cursor_row)
+}
+
+/// Draws the text rows; returns the first row shown.
 fn render_text<E: ImeEngine>(
     f: &mut Frame,
     app: &App<E>,
@@ -320,12 +397,17 @@ fn render_text<E: ImeEngine>(
     layout: &TextLayout,
     area: Rect,
     show_cursor: bool,
-) {
+) -> usize {
     if area.height == 0 || area.width == 0 {
-        return;
+        return 0;
     }
     let (crow, ccol) = layout.cursor;
-    let offset = crow.saturating_sub(area.height as usize - 1);
+    let offset = scroll_offset(
+        app.hits.text_scroll,
+        layout.rows.len(),
+        crow,
+        area.height as usize,
+    );
     let lines: Vec<Line> = layout
         .rows
         .iter()
@@ -360,6 +442,7 @@ fn render_text<E: ImeEngine>(
             cursor_y,
         ));
     }
+    offset
 }
 
 fn draw_candidates<E: ImeEngine>(
@@ -793,10 +876,14 @@ fn action_label(table: &str, action: &str) -> &'static str {
         ("input", "cancel") => "取消 / 清空 / 放弃",
         ("input", "left") => "左移",
         ("input", "right") => "右移",
+        ("input", "word_left") => "前一词",
+        ("input", "word_right") => "后一词",
         ("input", "prev_line") => "上一行",
         ("input", "next_line") => "下一行",
         ("input", "home") => "行首",
         ("input", "end") => "行尾",
+        ("input", "buffer_start") => "文本开头",
+        ("input", "buffer_end") => "文本结尾",
         ("input", "backspace") => "删除前一字",
         ("input", "delete") => "删除后一字",
         ("input", "kill_word") => "删除前一词",
@@ -911,20 +998,121 @@ mod tests {
     #[test]
     fn layout_expands_tabs_and_controls() {
         let text = "#\tab\r\nx\x1b";
-        let l = layout_cells(text, 2, None, &Theme::MOCHA, 20);
+        let l = layout_cells(text, 2, None, None, &Theme::MOCHA, 20);
         assert_eq!(rows(&l), ["#       ab^M", "x^["]);
         assert_eq!(l.cursor, (0, 8));
     }
 
     #[test]
     fn layout_wraps_tab_to_next_row() {
-        let l = layout_cells("abcdefg\tx", 9, None, &Theme::MOCHA, 10);
+        let l = layout_cells("abcdefg\tx", 9, None, None, &Theme::MOCHA, 10);
         // The tab needs 1 column at 7, fits; "x" is at column 8.
         assert_eq!(rows(&l), ["abcdefg x"]);
-        let l = layout_cells("abcdefghi\tx", 11, None, &Theme::MOCHA, 10);
+        let l = layout_cells("abcdefghi\tx", 11, None, None, &Theme::MOCHA, 10);
         // At column 9 the tab needs 7 columns: it wraps and takes 8.
         assert_eq!(rows(&l), ["abcdefghi", "        x"]);
         assert_eq!(l.cursor, (1, 9));
+    }
+
+    /// (col, width, before, after).
+    type Cells = Vec<(u16, u16, usize, usize)>;
+
+    /// The cells and the end offset of each row.
+    fn hit_rows(l: &TextLayout) -> Vec<(Cells, usize)> {
+        l.hits
+            .iter()
+            .map(|r| {
+                let cells = r
+                    .cells
+                    .iter()
+                    .map(|c| (c.col, c.width, c.before, c.after))
+                    .collect();
+                (cells, r.end)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn layout_records_offsets() {
+        // "你" is 3 bytes and 2 columns; the tab fills columns 3..8.
+        let l = layout_cells("a你\tb\ncd", 0, None, None, &Theme::MOCHA, 20);
+        assert_eq!(
+            hit_rows(&l),
+            [
+                (
+                    vec![(0, 1, 0, 1), (1, 2, 1, 4), (3, 5, 4, 5), (8, 1, 5, 6)],
+                    6
+                ),
+                (vec![(0, 1, 7, 8), (1, 1, 8, 9)], 9),
+            ]
+        );
+    }
+
+    #[test]
+    fn layout_offsets_across_wraps() {
+        // A wrapped row ends where the next one starts.
+        let l = layout_cells("abcd", 4, None, None, &Theme::MOCHA, 3);
+        assert_eq!(hit_rows(&l)[0].1, 3);
+        assert_eq!(hit_rows(&l)[1], (vec![(0, 1, 3, 4)], 4));
+        // A cursor after a full last row gets a row of its own.
+        let l = layout_cells("abc", 3, None, None, &Theme::MOCHA, 3);
+        assert_eq!(hit_rows(&l)[0].1, 3);
+        assert_eq!(hit_rows(&l)[1], (vec![], 3));
+    }
+
+    #[test]
+    fn layout_offsets_crlf_and_preedit() {
+        // CR and LF form one grapheme.
+        let l = layout_cells("a\r\nb", 0, None, None, &Theme::MOCHA, 20);
+        assert_eq!(
+            hit_rows(&l),
+            [
+                (vec![(0, 1, 0, 1), (1, 2, 1, 3)], 1),
+                (vec![(0, 1, 3, 4)], 4)
+            ]
+        );
+        // Preedit cells sit at the buffer cursor.
+        let p = Preedit {
+            text: "ni".into(),
+            cursor: 2,
+            ..Default::default()
+        };
+        let l = layout_cells("ab", 1, None, Some(&p), &Theme::MOCHA, 20);
+        assert_eq!(
+            hit_rows(&l),
+            [(
+                vec![(0, 1, 0, 1), (1, 1, 1, 1), (2, 1, 1, 1), (3, 1, 1, 2)],
+                2
+            )]
+        );
+    }
+
+    #[test]
+    fn layout_highlights_selection() {
+        let t = &Theme::MOCHA;
+        let l = layout_cells("a你c", 0, Some(1..4), None, t, 20);
+        let normal = Style::default().fg(t.text);
+        let row: Vec<(&str, Style)> = l.rows[0].iter().map(|(s, st)| (s.as_str(), *st)).collect();
+        assert_eq!(
+            row,
+            [
+                ("a", normal),
+                ("你", normal.bg(t.selection_bg)),
+                ("c", normal)
+            ]
+        );
+    }
+
+    #[test]
+    fn scroll_keeps_previous_offset() {
+        // Kept while the cursor row is visible.
+        assert_eq!(scroll_offset(5, 30, 10, 10), 5);
+        // Follows the cursor out of view, up or down.
+        assert_eq!(scroll_offset(5, 30, 3, 10), 3);
+        assert_eq!(scroll_offset(5, 30, 20, 10), 11);
+        // No blank rows at the bottom after the text shrinks.
+        assert_eq!(scroll_offset(25, 28, 27, 10), 18);
+        assert_eq!(scroll_offset(4, 3, 2, 10), 0);
     }
 
     #[test]

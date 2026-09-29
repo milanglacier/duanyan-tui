@@ -182,11 +182,15 @@ mode = "dark"                # auto | dark | light
 | Enter | 提交（rime 未组字时） |
 | Ctrl+J | 换行 |
 | Ctrl+P / Ctrl+N | 上一行 / 下一行（组字时交给 rime 移动候选） |
+| Alt+B / Alt+F | 前一词 / 后一词 |
+| Alt+< / Alt+> | 文本开头 / 结尾 |
 | Tab | 切到历史面板（未组字时） |
 | 历史面板：j/k、y、Enter、d | 移动、复制、取回编辑、删除 |
 | F1 / F5 / F6 / Ctrl+C | 帮助 / 部署 / 同步 / 退出 |
 
-多数终端无法单独发送 Shift 键，默认把 `alt+l` / `alt+r` 映射为左 / 右 Shift，用来切换中英文；支持 kitty 键盘协议的终端可以直接按 Shift。键位写法为 `[ctrl+][alt+][super+][shift+]<key>`。
+多数终端无法单独发送 Shift 键，默认把 `ctrl+l` / `ctrl+r` 映射为左 / 右 Shift，用来切换中英文；支持 kitty 键盘协议的终端可以直接按 Shift。键位写法为 `[ctrl+][alt+][super+][shift+]<key>`。
+
+全屏模式下，点击输入框里的文字可以移动光标；拖动选中文字，松开即复制到剪贴板，选中后按 Backspace 删除选中的文字。
 
 ## 目录
 

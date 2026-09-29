@@ -31,6 +31,11 @@ pub fn cell(g: &str, col: usize) -> (Cow<'_, str>, usize) {
     (g.into(), g.width().max(1))
 }
 
+/// Horizontal whitespace; a line break is never blank.
+fn is_blank(s: &str) -> bool {
+    s.chars().all(|c| c.is_whitespace() && c != '\n')
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Buffer {
     text: String,
@@ -187,29 +192,81 @@ impl Buffer {
         self.goal_col = None;
     }
 
-    /// Deletes the word before the cursor: trailing blanks plus one word
+    /// Start of the word before the cursor: trailing blanks plus one word
     /// segment (UAX #29, so each CJK ideograph is its own word). A line break
-    /// directly before the cursor is deleted on its own.
-    pub fn kill_word(&mut self) {
+    /// directly before the cursor is a word on its own.
+    fn word_start_before(&self) -> usize {
         let before = &self.text[..self.cursor];
-        let start = if before.ends_with('\n') {
-            self.cursor - 1
-        } else {
-            let segs: Vec<(usize, &str)> = before.split_word_bound_indices().collect();
-            let mut i = segs.len();
-            while i > 0
-                && segs[i - 1]
-                    .1
-                    .chars()
-                    .all(|c| c.is_whitespace() && c != '\n')
-            {
-                i -= 1;
-            }
-            if i > 0 && !segs[i - 1].1.contains('\n') {
-                i -= 1;
-            }
-            segs.get(i).map_or(self.cursor, |(off, _)| *off)
-        };
+        if let Some(rest) = before.strip_suffix('\n') {
+            return rest.strip_suffix('\r').unwrap_or(rest).len();
+        }
+        let segs: Vec<(usize, &str)> = before.split_word_bound_indices().collect();
+        let mut i = segs.len();
+        while i > 0 && is_blank(segs[i - 1].1) {
+            i -= 1;
+        }
+        if i > 0 && !segs[i - 1].1.contains('\n') {
+            i -= 1;
+        }
+        segs.get(i).map_or(self.cursor, |(off, _)| *off)
+    }
+
+    /// End of the word after the cursor, mirroring [`Self::word_start_before`].
+    fn word_end_after(&self) -> usize {
+        let after = &self.text[self.cursor..];
+        if let Some(n) = ["\n", "\r\n"].iter().find(|n| after.starts_with(**n)) {
+            return self.cursor + n.len();
+        }
+        let mut segs = after.split_word_bounds().peekable();
+        let mut end = self.cursor;
+        while let Some(seg) = segs.next_if(|s| is_blank(s)) {
+            end += seg.len();
+        }
+        if let Some(seg) = segs.next_if(|s| !s.contains('\n')) {
+            end += seg.len();
+        }
+        end
+    }
+
+    pub fn word_left(&mut self) {
+        self.cursor = self.word_start_before();
+        self.goal_col = None;
+    }
+
+    pub fn word_right(&mut self) {
+        self.cursor = self.word_end_after();
+        self.goal_col = None;
+    }
+
+    pub fn buffer_start(&mut self) {
+        self.cursor = 0;
+        self.goal_col = None;
+    }
+
+    pub fn buffer_end(&mut self) {
+        self.cursor = self.text.len();
+        self.goal_col = None;
+    }
+
+    /// Moves the cursor to byte offset `at`, which must be a grapheme
+    /// boundary.
+    pub fn set_cursor(&mut self, at: usize) {
+        debug_assert!(self.text.is_char_boundary(at));
+        self.cursor = at.min(self.text.len());
+        self.goal_col = None;
+    }
+
+    /// Deletes `range`, which must lie on grapheme boundaries; the cursor
+    /// goes to its start.
+    pub fn delete_range(&mut self, range: std::ops::Range<usize>) {
+        self.cursor = range.start;
+        self.text.replace_range(range, "");
+        self.goal_col = None;
+    }
+
+    /// Deletes the word before the cursor (see [`Self::word_start_before`]).
+    pub fn kill_word(&mut self) {
+        let start = self.word_start_before();
         self.text.replace_range(start..self.cursor, "");
         self.cursor = start;
         self.goal_col = None;
@@ -335,6 +392,54 @@ mod tests {
         assert_eq!(b.text(), "ab\n");
         b.kill_word();
         assert_eq!(b.text(), "ab");
+    }
+
+    #[test]
+    fn word_motion() {
+        let mut b = buf("hello  world\n我们 ab");
+        b.word_left();
+        assert_eq!(b.cursor(), "hello  world\n我们 ".len());
+        b.word_left(); // skips the blank, then one ideograph
+        assert_eq!(b.cursor(), "hello  world\n我".len());
+        b.word_left();
+        b.word_left(); // the line break is a word on its own
+        assert_eq!(b.cursor(), "hello  world".len());
+        b.word_left();
+        assert_eq!(b.cursor(), "hello  ".len());
+        b.word_left();
+        b.word_left(); // at the start: no-op
+        assert_eq!(b.cursor(), 0);
+
+        b.word_right();
+        assert_eq!(b.cursor(), "hello".len());
+        b.word_right(); // skips the blanks, then the word
+        assert_eq!(b.cursor(), "hello  world".len());
+        b.word_right();
+        assert_eq!(b.cursor(), "hello  world\n".len());
+        b.word_right();
+        assert_eq!(b.cursor(), "hello  world\n我".len());
+        b.word_right();
+        b.word_right();
+        b.word_right(); // at the end: no-op
+        assert_eq!(b.cursor(), b.text().len());
+    }
+
+    #[test]
+    fn blanks_before_line_break_stop_there() {
+        let mut b = buf("ab  \ncd");
+        b.buffer_start();
+        b.word_right();
+        b.word_right();
+        assert_eq!(b.cursor(), "ab  ".len());
+    }
+
+    #[test]
+    fn buffer_start_and_end() {
+        let mut b = buf("ab\ncd");
+        b.buffer_start();
+        assert_eq!(b.cursor(), 0);
+        b.buffer_end();
+        assert_eq!(b.cursor(), b.text().len());
     }
 
     #[test]

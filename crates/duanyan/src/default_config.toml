@@ -49,8 +49,8 @@ deploy = "f5"
 sync   = "f6"
 
 [keybinding.compat]        # rime key = terminal key(s); translated and sent to rime
-Shift_L = "alt+l"          # bare modifiers are sent as press + release
-Shift_R = "alt+r"
+Shift_L = "ctrl+l"         # bare modifiers are sent as press + release
+Shift_R = "ctrl+r"
 
 [keybinding.input]         # only when rime does not handle the key
 submit        = "enter"
@@ -59,10 +59,14 @@ focus_history = "tab"      # only while nothing is being composed
 cancel        = "esc"      # --stdout: cancel and exit; otherwise clear the buffer
 left          = ["left", "ctrl+b"]
 right         = ["right", "ctrl+f"]
+word_left     = "alt+b"
+word_right    = "alt+f"
 prev_line     = ["ctrl+p", "up"]
 next_line     = ["ctrl+n", "down"]
 home          = ["home", "ctrl+a"]
 end           = ["end", "ctrl+e"]
+buffer_start  = "alt+<"
+buffer_end    = "alt+>"
 backspace     = ["backspace", "ctrl+h"]
 delete        = ["delete", "ctrl+d"]
 kill_word     = "ctrl+w"

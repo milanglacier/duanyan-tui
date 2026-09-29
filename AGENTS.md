@@ -47,6 +47,9 @@ t kill-server
   contain only the submitted text.
 - Poll `capture-pane` until the expected text appears; do not use fixed
   sleeps.
+- Mouse input: `send-keys -l` with an SGR report (`\e[<0;X;YM` press,
+  `\e[<32;X;YM` drag, `\e[<0;X;Ym` release, 1-based cells) reaches the
+  program unchanged; the script's `mouse` helper wraps this.
 
 tmux cannot cover everything:
 
@@ -54,8 +57,6 @@ tmux cannot cover everything:
   bare Shift_L/Shift_R toggling ascii mode can only be verified by hand in
   kitty (or another KKP terminal) without a multiplexer. herdr has the same
   limitation (see the plan's `progress.md`).
-- **Mouse clicks**: not exercised by the script. The hit-testing logic is
-  unit-tested in `app.rs`, and clicks were verified by hand in kitty.
 
 ## Terminal pitfalls
 

@@ -226,10 +226,14 @@ actions!(InputAction {
     Cancel = "cancel",
     Left = "left",
     Right = "right",
+    WordLeft = "word_left",
+    WordRight = "word_right",
     PrevLine = "prev_line",
     NextLine = "next_line",
     Home = "home",
     End = "end",
+    BufferStart = "buffer_start",
+    BufferEnd = "buffer_end",
     Backspace = "backspace",
     Delete = "delete",
     KillWord = "kill_word",
@@ -404,7 +408,7 @@ mod tests {
                 Some(&InputAction::Submit)
             );
             assert_eq!(
-                km.compat.get(&KeySpec::parse("alt+l").unwrap()),
+                km.compat.get(&KeySpec::parse("ctrl+l").unwrap()),
                 Some(&RimeKey::parse("Shift_L").unwrap())
             );
             assert_eq!(
@@ -438,7 +442,7 @@ mod tests {
             submit = "alt+enter"
             newline = []
             [keybinding.compat]
-            Shift_L = ["alt+l", "f9"]
+            Shift_L = ["ctrl+l", "f9"]
             "#,
         )
         .unwrap();
