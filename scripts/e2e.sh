@@ -292,17 +292,16 @@ seq -f 'line %g' 1 40 >"$tmp/long.txt"
 edit_pane ed5 "$tmp/long.txt"
 t send-keys -t e2e:ed5 Down End
 t send-keys -t e2e:ed5 -l "nihao"
-# The box's top border sits between the cursor row and the candidates.
 wait_for e2e:ed5 "1 你好" &&
-    check "candidates two rows below the cursor" \
-        "$(($(row_of e2e:ed5 "1 你好") - $(row_of e2e:ed5 "line 2ni hao")))" 2
+    check "candidates right below the cursor" \
+        "$(($(row_of e2e:ed5 "1 你好") - $(row_of e2e:ed5 "line 2ni hao")))" 1
 t send-keys -t e2e:ed5 -l " "
 wait_for e2e:ed5 "line 2你好"
 t send-keys -t e2e:ed5 "M->"
 t send-keys -t e2e:ed5 -l "nihao"
 wait_for e2e:ed5 "1 你好" &&
-    check "candidates above the cursor at the bottom" \
-        "$(($(row_of e2e:ed5 "ni hao") - $(row_of e2e:ed5 "1 你好")))" 2
+    check "candidates right above the cursor at the bottom" \
+        "$(($(row_of e2e:ed5 "ni hao") - $(row_of e2e:ed5 "1 你好")))" 1
 t send-keys -t e2e:ed5 -l " "
 t send-keys -t e2e:ed5 Enter
 wait_for e2e:ed5 "code=0"

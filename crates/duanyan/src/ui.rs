@@ -483,39 +483,25 @@ fn draw_candidate_popup<E: ImeEngine>(
         return;
     }
     let (w, h) = candidates_size(ctx, &app.snapshot);
-    // Borders on both sides and a column of padding on the right; each label
-    // already starts with a space.
-    let Some(rect) = popup_rect(anchor, (w + 3, h + 2), bounds) else {
+    // A column of padding on the right, matching the space each label
+    // starts with.
+    let Some(rect) = popup_rect(anchor, (w + 1, h), bounds) else {
         return;
     };
-    let t = &ctx.theme;
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(t.border))
-        .style(Style::default().bg(t.bg));
-    let inner = block.inner(rect);
+    // Cover the text underneath, including the gaps between candidates.
     f.render_widget(Clear, rect);
-    f.render_widget(block, rect);
-    let inner = Rect::new(
-        inner.x,
-        inner.y,
-        inner.width.saturating_sub(1),
-        inner.height,
-    );
-    draw_candidates(f, app, ctx, inner, hits);
+    f.render_widget(Block::default().style(Style::default().bg(ctx.theme.bg)), rect);
+    let area = Rect::new(rect.x, rect.y, rect.width.saturating_sub(1), rect.height);
+    draw_candidates(f, app, ctx, area, hits);
 }
 
-/// Places a box of `size` below the row of `anchor`, starting a column left
-/// of it, inside `bounds`. It moves left to fit, goes above the row when only
-/// that side has room, and otherwise shrinks to the larger side; `None` when
-/// fewer than 3 rows (one inside the borders) remain.
+/// Places a box of `size` below the row of `anchor`, starting at its column,
+/// inside `bounds`. It moves left to fit, goes above the row when only that
+/// side has room, and otherwise shrinks to the larger side; `None` when
+/// neither side has a row.
 fn popup_rect(anchor: Position, size: (u16, u16), bounds: Rect) -> Option<Rect> {
     let w = size.0.min(bounds.width);
-    let x = anchor
-        .x
-        .saturating_sub(1)
-        .max(bounds.x)
-        .min(bounds.right() - w);
+    let x = anchor.x.max(bounds.x).min(bounds.right() - w);
     let below = bounds.bottom().saturating_sub(anchor.y + 1);
     let above = anchor.y.saturating_sub(bounds.y);
     let (y, h) = if size.1 <= below || below >= above {
@@ -524,7 +510,7 @@ fn popup_rect(anchor: Position, size: (u16, u16), bounds: Rect) -> Option<Rect> 
         let h = size.1.min(above);
         (anchor.y - h, h)
     };
-    (h >= 3).then(|| Rect::new(x, y, w, h))
+    (h >= 1).then(|| Rect::new(x, y, w, h))
 }
 
 fn candidate_spans<'a>(ctx: &UiContext, c: &'a Candidate, highlighted: bool) -> Vec<Span<'a>> {
@@ -1251,42 +1237,48 @@ mod tests {
     #[test]
     fn popup_placement() {
         let bounds = Rect::new(2, 1, 40, 20);
-        // Below the anchor row, one column left of it.
+        // Right below the anchor row, starting at its column.
         assert_eq!(
-            popup_rect(Position::new(10, 5), (20, 3), bounds),
-            Some(Rect::new(9, 6, 20, 3))
+            popup_rect(Position::new(10, 5), (20, 1), bounds),
+            Some(Rect::new(10, 6, 20, 1))
         );
         // Never left of the bounds.
         assert_eq!(
-            popup_rect(Position::new(2, 5), (20, 3), bounds),
-            Some(Rect::new(2, 6, 20, 3))
+            popup_rect(Position::new(0, 5), (20, 1), bounds),
+            Some(Rect::new(2, 6, 20, 1))
         );
         // Moves left to fit, and is no wider than the bounds.
         assert_eq!(
-            popup_rect(Position::new(35, 5), (20, 3), bounds),
-            Some(Rect::new(22, 6, 20, 3))
+            popup_rect(Position::new(35, 5), (20, 1), bounds),
+            Some(Rect::new(22, 6, 20, 1))
         );
         assert_eq!(
-            popup_rect(Position::new(35, 5), (50, 3), bounds),
-            Some(Rect::new(2, 6, 40, 3))
+            popup_rect(Position::new(35, 5), (50, 1), bounds),
+            Some(Rect::new(2, 6, 40, 1))
         );
-        // Above the anchor row when only that side has room.
+        // Right above the anchor row when only that side has room.
         assert_eq!(
-            popup_rect(Position::new(10, 19), (20, 3), bounds),
-            Some(Rect::new(9, 16, 20, 3))
+            popup_rect(Position::new(10, 20), (20, 3), bounds),
+            Some(Rect::new(10, 17, 20, 3))
         );
         // Otherwise the larger side, shrunk.
         assert_eq!(
             popup_rect(Position::new(10, 12), (20, 12), bounds),
-            Some(Rect::new(9, 1, 20, 11))
+            Some(Rect::new(10, 1, 20, 11))
         );
         assert_eq!(
             popup_rect(Position::new(10, 8), (20, 12), bounds),
-            Some(Rect::new(9, 9, 20, 12))
+            Some(Rect::new(10, 9, 20, 12))
         );
-        // Nothing when neither side has 3 rows.
-        let short = Rect::new(0, 0, 40, 5);
-        assert_eq!(popup_rect(Position::new(0, 2), (20, 3), short), None);
+        // One spare row is enough.
+        let two = Rect::new(0, 0, 40, 2);
+        assert_eq!(
+            popup_rect(Position::new(0, 1), (20, 1), two),
+            Some(Rect::new(0, 0, 20, 1))
+        );
+        // Nothing when neither side has a row.
+        let one = Rect::new(0, 0, 40, 1);
+        assert_eq!(popup_rect(Position::new(0, 0), (20, 1), one), None);
     }
 
     #[test]
