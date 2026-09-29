@@ -126,6 +126,20 @@ t send-keys -t e2e:full "M->"
 t send-keys -t e2e:full -l "5"
 wait_for e2e:full "│ 4hello 2world3 1foo5 " && echo "ok: alt+b, alt+f, alt+<, alt+>"
 
+step "fullscreen: undo and redo"
+t send-keys -t e2e:full C-u
+t send-keys -t e2e:full -l "one two, three"
+wait_for e2e:full "│ one two, three "
+# Typing up to the punctuation is one step, the rest another.
+t send-keys -t e2e:full C-z
+wait_for e2e:full "│ one two,  " && echo "ok: ctrl+z undoes back to the punctuation"
+t send-keys -t e2e:full C-_ C-z
+wait_for e2e:full "│ 4hello 2world3 1foo5 " && echo "ok: ctrl+_ undoes, then the kill is undone"
+t send-keys -t e2e:full C-y M-_
+wait_for e2e:full "│ one two,  " && echo "ok: ctrl+y and alt+_ redo"
+t send-keys -t e2e:full C-y
+wait_for e2e:full "│ one two, three " && echo "ok: redo restores the last step"
+
 step "fullscreen: mouse click, drag copy, backspace deletes the selection"
 t send-keys -t e2e:full C-u
 t send-keys -t e2e:full -l "hello world"
@@ -172,6 +186,15 @@ t send-keys -t e2e:sh1 C-j
 t send-keys -t e2e:sh1 -l "shijie "
 t send-keys -t e2e:sh1 Enter
 wait_for e2e:sh1 "code=0 out=[你好" && wait_for e2e:sh1 "世界]" && echo "ok: stdout output and status"
+
+step "--stdout: undo and redo inline"
+shell_pane sh4
+t send-keys -t e2e:sh4 -l "out=\$($tmp/duanyan --stdout); printf 'code=%s out=[%s]\n' \$? \"\$out\""
+t send-keys -t e2e:sh4 Enter
+wait_for e2e:sh4 "输出"
+t send-keys -t e2e:sh4 -l "nihao shijie "
+t send-keys -t e2e:sh4 C-z C-z M-_ Enter
+wait_for e2e:sh4 "code=0 out=[你好]" && echo "ok: each commit is one undo step"
 
 step "--stdout: esc cancels with 1"
 shell_pane sh2
