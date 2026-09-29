@@ -1,5 +1,6 @@
 //! Application state and key routing: global -> compat -> rime -> focus table.
 
+use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{
@@ -74,6 +75,55 @@ pub struct HitMap {
     pub history_rows: Vec<(Rect, usize)>,
     pub history_area: Option<Rect>,
     pub input_area: Option<Rect>,
+    /// The visible text, fullscreen only.
+    pub text: Option<TextHits>,
+    /// First text row shown; the next frame keeps it while the cursor stays
+    /// visible.
+    pub text_scroll: usize,
+}
+
+/// A drawn grapheme and the buffer byte offsets before and after it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellHit {
+    pub col: u16,
+    pub width: u16,
+    pub before: usize,
+    pub after: usize,
+}
+
+/// One visible row: its cells, and the offset a click past them selects.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct RowHit {
+    pub cells: Vec<CellHit>,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextHits {
+    /// The text rows, spanning the input box's inner width.
+    pub area: Rect,
+    /// Screen column of text column 0.
+    pub x: u16,
+    pub rows: Vec<RowHit>,
+    /// Buffer length, for clicks below the last row.
+    pub end: usize,
+}
+
+impl TextHits {
+    /// The grapheme at `pos`, clamped to the text area, as the offsets
+    /// before and after it; past the end of a row, an empty range there.
+    pub fn grapheme_at(&self, pos: Position) -> Range<usize> {
+        let a = self.area;
+        let row = pos.y.clamp(a.y, a.bottom().saturating_sub(1)) - a.y;
+        let col = pos.x.saturating_sub(self.x);
+        let Some(r) = self.rows.get(row as usize) else {
+            return self.end..self.end;
+        };
+        r.cells
+            .iter()
+            .find(|c| col < c.col + c.width)
+            .map_or(r.end..r.end, |c| c.before..c.after)
+    }
 }
 
 pub struct App<E: ImeEngine> {
@@ -103,6 +153,12 @@ pub struct App<E: ImeEngine> {
     pub exit: Option<Exit>,
     pub effects: Vec<Effect>,
     pub hits: HitMap,
+    /// Text selected by dragging, as buffer byte offsets; shown until the
+    /// next key, paste or click.
+    pub selection: Option<Range<usize>>,
+    /// While the left button is held after going down on the text: the
+    /// grapheme it went down on.
+    drag_anchor: Option<Range<usize>>,
 }
 
 impl<E: ImeEngine> App<E> {
@@ -130,6 +186,8 @@ impl<E: ImeEngine> App<E> {
             exit: None,
             effects: Vec::new(),
             hits: HitMap::default(),
+            selection: None,
+            drag_anchor: None,
         }
     }
 
@@ -154,6 +212,7 @@ impl<E: ImeEngine> App<E> {
 
     fn insert_commit(&mut self, commit: Option<String>) {
         if let Some(text) = commit {
+            self.clear_selection();
             self.buffer.insert_str(&text);
         }
     }
@@ -188,6 +247,9 @@ impl<E: ImeEngine> App<E> {
             }
             return;
         }
+        // Any key ends the selection; backspace deletes it.
+        let selection = self.selection.take().filter(|r| !r.is_empty());
+        self.drag_anchor = None;
         // Any key other than a second cancel disarms the discard prompt.
         let armed = self.discard_armed.take();
 
@@ -204,11 +266,17 @@ impl<E: ImeEngine> App<E> {
                     self.history_action(action);
                 }
             }
-            Focus::Input => self.input_key(&ev, spec, armed),
+            Focus::Input => self.input_key(&ev, spec, armed, selection),
         }
     }
 
-    fn input_key(&mut self, ev: &KeyEvent, spec: Option<KeySpec>, armed: Option<Instant>) {
+    fn input_key(
+        &mut self,
+        ev: &KeyEvent,
+        spec: Option<KeySpec>,
+        armed: Option<Instant>,
+        selection: Option<Range<usize>>,
+    ) {
         if let Some(target) = spec.and_then(|s| self.keymap.compat.get(&s).copied()) {
             for k in keys::compat_sequence(target) {
                 let out = self.engine.process_key(k);
@@ -227,7 +295,7 @@ impl<E: ImeEngine> App<E> {
             }
         }
         if let Some(action) = spec.and_then(|s| self.keymap.input.get(&s).copied()) {
-            self.input_action(action, armed);
+            self.input_action(action, armed, selection);
             return;
         }
         // Printable text rime left alone, e.g. in ascii mode.
@@ -283,7 +351,12 @@ impl<E: ImeEngine> App<E> {
         }
     }
 
-    fn input_action(&mut self, action: InputAction, armed: Option<Instant>) {
+    fn input_action(
+        &mut self,
+        action: InputAction,
+        armed: Option<Instant>,
+        selection: Option<Range<usize>>,
+    ) {
         let b = &mut self.buffer;
         match action {
             InputAction::Submit => self.submit(),
@@ -304,11 +377,18 @@ impl<E: ImeEngine> App<E> {
             },
             InputAction::Left => b.left(),
             InputAction::Right => b.right(),
+            InputAction::WordLeft => b.word_left(),
+            InputAction::WordRight => b.word_right(),
             InputAction::PrevLine => b.prev_line(),
             InputAction::NextLine => b.next_line(),
             InputAction::Home => b.home(),
             InputAction::End => b.end(),
-            InputAction::Backspace => b.backspace(),
+            InputAction::BufferStart => b.buffer_start(),
+            InputAction::BufferEnd => b.buffer_end(),
+            InputAction::Backspace => match selection {
+                Some(r) => b.delete_range(r),
+                None => b.backspace(),
+            },
             InputAction::Delete => b.delete(),
             InputAction::KillWord => b.kill_word(),
             InputAction::KillToStart => b.kill_to_start(),
@@ -383,6 +463,7 @@ impl<E: ImeEngine> App<E> {
 
     /// Bracketed paste: bypasses rime; an active composition is discarded.
     pub fn paste(&mut self, text: &str) {
+        self.clear_selection();
         if self.engine.busy().is_some() {
             return;
         }
@@ -395,6 +476,11 @@ impl<E: ImeEngine> App<E> {
         self.focus = Focus::Input;
     }
 
+    fn clear_selection(&mut self) {
+        self.selection = None;
+        self.drag_anchor = None;
+    }
+
     pub fn mouse(&mut self, ev: MouseEvent) {
         if self.engine.busy().is_some() || self.show_help {
             return;
@@ -403,6 +489,7 @@ impl<E: ImeEngine> App<E> {
         let hit = |r: &Rect| r.contains(pos);
         match ev.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                self.clear_selection();
                 if let Some(&(_, i)) = self.hits.candidates.iter().find(|(r, _)| hit(r)) {
                     let commit = self.engine.select_candidate(i);
                     self.insert_commit(commit);
@@ -421,8 +508,40 @@ impl<E: ImeEngine> App<E> {
                         self.focus = Focus::History;
                         self.history_sel = i;
                     }
+                } else if let Some(text) = self.hits.text.as_ref().filter(|t| hit(&t.area)) {
+                    self.focus = Focus::Input;
+                    // The cursor goes before the clicked character.
+                    if !self.snapshot.composing {
+                        let g = text.grapheme_at(pos);
+                        self.buffer.set_cursor(g.start);
+                        self.drag_anchor = Some(g);
+                    }
                 } else if self.hits.input_area.as_ref().is_some_and(hit) {
                     self.focus = Focus::Input;
+                }
+            }
+            // Like a terminal selection, the characters under both ends are
+            // included; the cursor follows the moving end.
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if let (Some(text), Some(anchor)) = (&self.hits.text, &self.drag_anchor) {
+                    let head = text.grapheme_at(pos);
+                    let (range, cursor) = if head.start < anchor.start {
+                        (head.start..anchor.end, head.start)
+                    } else {
+                        (anchor.start..head.end, head.end)
+                    };
+                    self.buffer.set_cursor(cursor);
+                    self.selection = Some(range);
+                }
+            }
+            MouseEventKind::Up(MouseButton::Left) if self.drag_anchor.take().is_some() => {
+                match self.selection.clone() {
+                    Some(r) if !r.is_empty() => {
+                        let text = self.buffer.text()[r].to_string();
+                        self.effects.push(Effect::Copy(text));
+                        self.notify(Level::Success, "已复制选中文字");
+                    }
+                    _ => self.selection = None,
                 }
             }
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
@@ -667,7 +786,7 @@ mod tests {
     #[test]
     fn compat_sends_shift_tap() {
         let mut a = app();
-        a.handle_key(key(KeyCode::Char('l'), KeyModifiers::ALT));
+        a.handle_key(key(KeyCode::Char('l'), KeyModifiers::CONTROL));
         assert!(a.snapshot.ascii_mode);
         assert_eq!(
             a.engine.received,
@@ -735,6 +854,142 @@ mod tests {
         assert!(a.snapshot.ascii_mode);
         a.mouse(click(50, 50)); // nothing there
         assert_eq!(a.buffer.text(), "NI");
+    }
+
+    /// Hits for "ab\n你c" drawn at rows 5 and 6, text starting at column 2.
+    fn text_hits() -> TextHits {
+        let c = |col, width, before, after| CellHit {
+            col,
+            width,
+            before,
+            after,
+        };
+        TextHits {
+            area: Rect::new(1, 5, 10, 3),
+            x: 2,
+            rows: vec![
+                RowHit {
+                    cells: vec![c(0, 1, 0, 1), c(1, 1, 1, 2)],
+                    end: 2,
+                },
+                RowHit {
+                    cells: vec![c(0, 2, 3, 6), c(2, 1, 6, 7)],
+                    end: 7,
+                },
+            ],
+            end: 7,
+        }
+    }
+
+    #[test]
+    fn graphemes_at_positions() {
+        let h = text_hits();
+        let at = |x, y| h.grapheme_at(Position::new(x, y));
+        assert_eq!(at(2, 5), 0..1);
+        assert_eq!(at(3, 5), 1..2);
+        assert_eq!(at(8, 5), 2..2, "past the row end");
+        assert_eq!(at(1, 5), 0..1, "left padding");
+        assert_eq!(at(2, 6), 3..6, "left half of 你");
+        assert_eq!(at(3, 6), 3..6, "right half of 你");
+        assert_eq!(at(2, 7), 7..7, "below the last row");
+        assert_eq!(at(3, 0), 1..2, "above the area: first row");
+        assert_eq!(at(2, 20), 7..7, "below the area: its last row");
+    }
+
+    fn mouse_at(a: &mut App<Fake>, kind: MouseEventKind, column: u16, row: u16) {
+        a.mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        });
+    }
+
+    fn text_app() -> App<Fake> {
+        let mut a = app();
+        a.buffer.insert_str("ab\n你c");
+        a.hits.text = Some(text_hits());
+        a.hits.input_area = Some(Rect::new(0, 4, 12, 6));
+        a
+    }
+
+    const DOWN: MouseEventKind = MouseEventKind::Down(MouseButton::Left);
+    const DRAG: MouseEventKind = MouseEventKind::Drag(MouseButton::Left);
+    const UP: MouseEventKind = MouseEventKind::Up(MouseButton::Left);
+
+    #[test]
+    fn click_moves_cursor() {
+        let mut a = text_app();
+        a.focus = Focus::History;
+        mouse_at(&mut a, DOWN, 3, 6); // right half of 你
+        mouse_at(&mut a, UP, 3, 6);
+        assert_eq!(a.buffer.cursor(), 3, "before the clicked character");
+        assert_eq!(a.focus, Focus::Input);
+        assert_eq!(a.selection, None);
+        assert!(a.effects.is_empty());
+    }
+
+    #[test]
+    fn click_while_composing_keeps_cursor() {
+        let mut a = text_app();
+        typ(&mut a, "ni");
+        mouse_at(&mut a, DOWN, 2, 5);
+        mouse_at(&mut a, DRAG, 3, 6);
+        mouse_at(&mut a, UP, 3, 6);
+        assert_eq!(a.buffer.cursor(), 7);
+        assert_eq!(a.selection, None);
+        assert!(a.effects.is_empty());
+    }
+
+    #[test]
+    fn drag_selects_and_copies() {
+        let mut a = text_app();
+        // From "b" to 你: both ends are included.
+        mouse_at(&mut a, DOWN, 3, 5);
+        mouse_at(&mut a, DRAG, 20, 5);
+        assert_eq!(a.selection, Some(1..2));
+        mouse_at(&mut a, DRAG, 2, 6);
+        assert_eq!(a.buffer.cursor(), 6, "the cursor follows the drag");
+        assert!(a.effects.is_empty());
+        mouse_at(&mut a, UP, 2, 6);
+        assert_eq!(a.effects, vec![Effect::Copy("b\n你".into())]);
+        assert_eq!(a.selection, Some(1..6));
+        assert_eq!(a.message.as_ref().map(|m| m.level), Some(Level::Success));
+        // Dragging backwards selects the same characters.
+        mouse_at(&mut a, DOWN, 3, 6);
+        assert_eq!(a.selection, None);
+        mouse_at(&mut a, DRAG, 3, 5);
+        mouse_at(&mut a, UP, 3, 5);
+        assert_eq!(a.effects.last(), Some(&Effect::Copy("b\n你".into())));
+        assert_eq!(a.buffer.cursor(), 1);
+    }
+
+    #[test]
+    fn backspace_deletes_selection() {
+        let mut a = text_app();
+        mouse_at(&mut a, DOWN, 3, 5);
+        mouse_at(&mut a, DRAG, 3, 6);
+        mouse_at(&mut a, UP, 3, 6);
+        press(&mut a, KeyCode::Backspace);
+        assert_eq!(a.buffer.text(), "ac");
+        assert_eq!(a.buffer.cursor(), 1);
+        assert_eq!(a.selection, None);
+        press(&mut a, KeyCode::Backspace); // back to deleting one character
+        assert_eq!(a.buffer.text(), "c");
+    }
+
+    #[test]
+    fn other_keys_end_selection() {
+        let mut a = text_app();
+        mouse_at(&mut a, DOWN, 3, 5);
+        mouse_at(&mut a, DRAG, 3, 6);
+        mouse_at(&mut a, UP, 3, 6);
+        press(&mut a, KeyCode::Right);
+        assert_eq!(a.selection, None);
+        assert_eq!(a.buffer.text(), "ab\n你c");
+        assert_eq!(a.buffer.cursor(), 7);
+        press(&mut a, KeyCode::Backspace);
+        assert_eq!(a.buffer.text(), "ab\n你");
     }
 
     fn edit_app(text: &str) -> App<Fake> {

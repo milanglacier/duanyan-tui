@@ -73,6 +73,17 @@ check() {
 
 step() { echo "== $*"; }
 
+# mouse PANE down|drag|up X Y: sends a left-button SGR mouse report at the
+# 1-based cell X, Y. tmux passes it through to the program unchanged.
+mouse() {
+    local b=0 end=M
+    case $2 in
+    drag) b=32 ;;
+    up) end=m ;;
+    esac
+    t send-keys -t "$1" -l $'\e'"[<$b;$3;$4$end"
+}
+
 # A pane running a plain shell, for commands whose exit status we check.
 shell_pane() {
     t new-window -d -n "$1" "env -i PATH=\"$PATH\" TERM=screen bash --norc --noprofile"
@@ -94,12 +105,45 @@ wait_for e2e:full "你好↵世界" && echo "ok: history shows the submitted tex
 wait_for e2e:full "已复制到剪贴板" && echo "ok: copied marker"
 check "OSC 52 clipboard content" "$(t show-buffer)" $'你好\n世界'
 
-step "fullscreen: compat alt+l toggles ascii mode"
-t send-keys -t e2e:full M-l
+step "fullscreen: compat ctrl+l / ctrl+r toggle ascii mode"
+t send-keys -t e2e:full C-l
 wait_for e2e:full " 西 " && echo "ok: status bar shows ascii mode"
 t send-keys -t e2e:full -l "abc"
 wait_for e2e:full "│ abc" && echo "ok: ascii text goes straight to the buffer"
-t send-keys -t e2e:full M-l
+
+step "fullscreen: word and buffer motion"
+t send-keys -t e2e:full C-u
+t send-keys -t e2e:full -l "hello world foo"
+t send-keys -t e2e:full M-b
+t send-keys -t e2e:full -l "1"
+t send-keys -t e2e:full M-b M-b
+t send-keys -t e2e:full -l "2"
+t send-keys -t e2e:full M-f
+t send-keys -t e2e:full -l "3"
+t send-keys -t e2e:full "M-<"
+t send-keys -t e2e:full -l "4"
+t send-keys -t e2e:full "M->"
+t send-keys -t e2e:full -l "5"
+wait_for e2e:full "│ 4hello 2world3 1foo5 " && echo "ok: alt+b, alt+f, alt+<, alt+>"
+
+step "fullscreen: mouse click, drag copy, backspace deletes the selection"
+t send-keys -t e2e:full C-u
+t send-keys -t e2e:full -l "hello world"
+wait_for e2e:full "│ hello world "
+row=$(screen e2e:full | grep -n "│ hello world " | cut -d: -f1)
+# The text starts at column 4 (1-based): drag from "w" past the row end.
+mouse e2e:full down 10 "$row"
+mouse e2e:full drag 20 "$row"
+mouse e2e:full up 20 "$row"
+wait_for e2e:full "已复制选中文字" && check "drag copies the selection" "$(t show-buffer)" "world"
+t send-keys -t e2e:full BSpace
+wait_for e2e:full "│ hello  " && echo "ok: backspace deleted the selection"
+mouse e2e:full down 4 "$row"
+mouse e2e:full up 4 "$row"
+t send-keys -t e2e:full -l "X"
+wait_for e2e:full "│ Xhello " && echo "ok: click moved the cursor"
+t send-keys -t e2e:full C-e C-u
+t send-keys -t e2e:full C-r
 wait_for e2e:full " 中 " && echo "ok: back to chinese mode"
 
 step "fullscreen: history focus, recall"
@@ -278,6 +322,8 @@ step "edit FILE: git commit with GIT_EDITOR"
 git init -q "$tmp/repo"
 git -C "$tmp/repo" config user.name e2e
 git -C "$tmp/repo" config user.email e2e@example.com
+# The user's global config may sign commits, which would wait for gpg.
+git -C "$tmp/repo" config commit.gpgsign false
 git -C "$tmp/repo" commit -q --allow-empty -m first
 gitcmd="cd $tmp/repo && GIT_EDITOR=$tmp/duanyan git commit -q --allow-empty; echo code=\$? count=\$(git rev-list --count HEAD) subject=\$(git log -1 --format=%s)"
 shell_pane git1

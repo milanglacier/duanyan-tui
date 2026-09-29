@@ -466,6 +466,11 @@ mod tests {
         // Shifted symbol arrives as the character; SHIFT is dropped.
         let e = ev(KeyCode::Char(':'), KeyModifiers::ALT | KeyModifiers::SHIFT);
         assert_eq!(KeySpec::from_event(&e), Some(p("alt+:")));
+        // alt+<: legacy ESC <, and KKP reporting the shifted key.
+        let e = ev(KeyCode::Char('<'), KeyModifiers::ALT);
+        assert_eq!(KeySpec::from_event(&e), Some(p("alt+<")));
+        let e = ev(KeyCode::Char('<'), KeyModifiers::ALT | KeyModifiers::SHIFT);
+        assert_eq!(KeySpec::from_event(&e), Some(p("alt+<")));
         let e = ev(KeyCode::BackTab, KeyModifiers::SHIFT);
         assert_eq!(KeySpec::from_event(&e), Some(p("shift+tab")));
         let e = ev(KeyCode::Char('j'), KeyModifiers::CONTROL);
