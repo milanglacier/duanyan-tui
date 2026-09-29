@@ -322,6 +322,8 @@ step "edit FILE: git commit with GIT_EDITOR"
 git init -q "$tmp/repo"
 git -C "$tmp/repo" config user.name e2e
 git -C "$tmp/repo" config user.email e2e@example.com
+# The user's global config may sign commits, which would wait for gpg.
+git -C "$tmp/repo" config commit.gpgsign false
 git -C "$tmp/repo" commit -q --allow-empty -m first
 gitcmd="cd $tmp/repo && GIT_EDITOR=$tmp/duanyan git commit -q --allow-empty; echo code=\$? count=\$(git rev-list --count HEAD) subject=\$(git log -1 --format=%s)"
 shell_pane git1
