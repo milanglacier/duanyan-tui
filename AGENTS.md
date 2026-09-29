@@ -19,10 +19,9 @@ rendering or key routing must also pass `scripts/e2e.sh`.
 
 ## End-to-end testing with tmux
 
-`scripts/e2e.sh` runs the real binary in tmux panes: tmux provides a real pty,
-answers terminal queries, turns `send-keys` into input, and records OSC 52 in
-`tmux show-buffer`. It uses a private tmux server and temporary XDG dirs, so
-the user's configuration is never touched. Extend it when adding behavior.
+`scripts/e2e.sh` runs the real binary in tmux, which answers the queries
+duanyan sends to the terminal (OSC 11, KKP, cursor position) the way a real
+terminal does. Extend the script when adding behavior.
 
 For ad-hoc checks, follow the same pattern:
 
@@ -39,17 +38,10 @@ t kill-server
 ```
 
 - The first run deploys rime; wait for the schema name in the header before
-  typing. To make the deploy fast and the candidates predictable, put a
-  `default.custom.yaml` with a one-schema `schema_list` in
-  `$tmp/config/duanyan/rime`, as the script does.
-- Test `--stdout` from a shell pane with `out=$(duanyan --stdout)` and
-  print `$?` and `$out`. The inline UI draws on `/dev/tty`, so stdout must
-  contain only the submitted text.
+  typing. Copy the script's one-schema `default.custom.yaml` into
+  `$tmp/config/duanyan/rime` to keep the deploy fast.
 - Poll `capture-pane` until the expected text appears; do not use fixed
   sleeps.
-- Mouse input: `send-keys -l` with an SGR report (`\e[<0;X;YM` press,
-  `\e[<32;X;YM` drag, `\e[<0;X;Ym` release, 1-based cells) reaches the
-  program unchanged; the script's `mouse` helper wraps this.
 
 tmux cannot cover everything:
 
