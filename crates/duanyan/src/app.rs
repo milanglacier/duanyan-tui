@@ -304,7 +304,7 @@ impl<E: ImeEngine> App<E> {
                 .modifiers
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
         {
-            self.buffer.insert_str(c.encode_utf8(&mut [0; 4]));
+            self.buffer.type_char(c);
         }
     }
 
@@ -393,6 +393,11 @@ impl<E: ImeEngine> App<E> {
             InputAction::KillWord => b.kill_word(),
             InputAction::KillToStart => b.kill_to_start(),
             InputAction::KillToEnd => b.kill_to_end(),
+            // Ignored while composing, so the text never changes under the
+            // preedit.
+            InputAction::Undo if !self.snapshot.composing => b.undo(),
+            InputAction::Redo if !self.snapshot.composing => b.redo(),
+            InputAction::Undo | InputAction::Redo => {}
         }
     }
 
@@ -1055,6 +1060,81 @@ mod tests {
         a.history.push("old".into(), 0).unwrap();
         press(&mut a, KeyCode::Tab);
         assert_eq!(a.focus, Focus::Input);
+    }
+
+    fn ctrl(a: &mut App<Fake>, c: char) {
+        a.handle_key(key(KeyCode::Char(c), KeyModifiers::CONTROL));
+    }
+
+    #[test]
+    fn undo_redo_commits_and_typing() {
+        let mut a = app();
+        typ(&mut a, "ni ");
+        a.handle_key(key(KeyCode::Char('l'), KeyModifiers::CONTROL)); // ascii
+        typ(&mut a, "hi there, ok");
+        assert_eq!(a.buffer.text(), "NIhi there, ok");
+        ctrl(&mut a, 'z');
+        assert_eq!(a.buffer.text(), "NIhi there,");
+        ctrl(&mut a, 'z');
+        assert_eq!(a.buffer.text(), "NI");
+        ctrl(&mut a, 'z');
+        assert_eq!(a.buffer.text(), "");
+        ctrl(&mut a, 'y');
+        a.handle_key(key(KeyCode::Char('_'), KeyModifiers::ALT));
+        assert_eq!(a.buffer.text(), "NIhi there,");
+    }
+
+    #[test]
+    fn undo_keys_with_and_without_kkp() {
+        let cfg = Config::default_config();
+        // Legacy terminals send ctrl+/ and ctrl+_ as 0x1f, parsed as ctrl+7.
+        let mut a = app();
+        a.buffer.insert_str("x");
+        ctrl(&mut a, '7');
+        assert!(a.buffer.is_empty());
+        a.keymap = Keymap::build(&cfg.keybinding, true).unwrap();
+        for c in ['/', '_'] {
+            a.buffer.insert_str("x");
+            ctrl(&mut a, c);
+            assert!(a.buffer.is_empty(), "ctrl+{c}");
+        }
+    }
+
+    #[test]
+    fn undo_ignored_while_composing() {
+        let mut a = app();
+        typ(&mut a, "ab ni");
+        ctrl(&mut a, 'z');
+        assert_eq!(a.buffer.text(), "AB");
+        assert!(a.snapshot.composing);
+        press(&mut a, KeyCode::Esc);
+        ctrl(&mut a, 'z');
+        assert_eq!(a.buffer.text(), "");
+    }
+
+    #[test]
+    fn scratch_undo_after_clear_but_not_submit() {
+        let mut a = app();
+        typ(&mut a, "ab ");
+        press(&mut a, KeyCode::Esc); // clears the buffer
+        assert!(a.buffer.is_empty());
+        ctrl(&mut a, 'z');
+        assert_eq!(a.buffer.text(), "AB");
+        press(&mut a, KeyCode::Enter);
+        ctrl(&mut a, 'z');
+        assert!(a.buffer.is_empty(), "submitted text is not undoable");
+    }
+
+    #[test]
+    fn edit_mode_undo_to_original_cancels_at_once() {
+        let mut a = edit_app("x");
+        typ(&mut a, "ab ");
+        ctrl(&mut a, 'z');
+        assert_eq!(a.buffer.text(), "x");
+        ctrl(&mut a, 'z'); // the loaded file is not undoable
+        assert_eq!(a.buffer.text(), "x");
+        press(&mut a, KeyCode::Esc);
+        assert_eq!(a.exit, Some(Exit::Cancel));
     }
 
     #[test]

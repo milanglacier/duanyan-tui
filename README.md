@@ -184,6 +184,8 @@ mode = "dark"                # auto | dark | light
 | Ctrl+P / Ctrl+N | 上一行 / 下一行（组字时交给 rime 移动候选） |
 | Alt+B / Alt+F | 前一词 / 后一词 |
 | Alt+< / Alt+> | 文本开头 / 结尾 |
+| Ctrl+Z、Ctrl+/、Ctrl+_ | 撤销（未组字时） |
+| Ctrl+Y、Alt+_ | 重做（未组字时） |
 | Tab | 切到历史面板（未组字时） |
 | 历史面板：j/k、y、Enter、d | 移动、复制、取回编辑、删除 |
 | F1 / F5 / F6 / Ctrl+C | 帮助 / 部署 / 同步 / 退出 |

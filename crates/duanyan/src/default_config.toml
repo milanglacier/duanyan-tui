@@ -72,6 +72,8 @@ delete        = ["delete", "ctrl+d"]
 kill_word     = "ctrl+w"
 kill_to_start = "ctrl+u"
 kill_to_end   = "ctrl+k"
+undo          = ["ctrl+z", "ctrl+/", "ctrl+_"]  # only while nothing is being composed
+redo          = ["ctrl+y", "alt+_"]             # only while nothing is being composed
 
 [keybinding.history]       # history focus; keys never reach rime
 next        = ["j", "down", "ctrl+n"]

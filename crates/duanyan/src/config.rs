@@ -239,6 +239,8 @@ actions!(InputAction {
     KillWord = "kill_word",
     KillToStart = "kill_to_start",
     KillToEnd = "kill_to_end",
+    Undo = "undo",
+    Redo = "redo",
 });
 
 actions!(HistoryAction {

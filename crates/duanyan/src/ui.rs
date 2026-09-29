@@ -991,6 +991,8 @@ fn action_label(table: &str, action: &str) -> &'static str {
         ("input", "kill_word") => "删除前一词",
         ("input", "kill_to_start") => "删到行首",
         ("input", "kill_to_end") => "删到行尾",
+        ("input", "undo") => "撤销",
+        ("input", "redo") => "重做",
         ("history", "next") => "下一条",
         ("history", "prev") => "上一条",
         ("history", "first") => "第一条",

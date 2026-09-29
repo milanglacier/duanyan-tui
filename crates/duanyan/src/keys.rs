@@ -249,7 +249,7 @@ impl KeySpec {
         let ctrl = s.mods & CTRL != 0;
         let shift = s.mods & SHIFT != 0;
         match s.key {
-            Key::Char(c) => !ctrl || c.is_ascii_lowercase() || ('4'..='7').contains(&c) || c == '?',
+            Key::Char(c) => !ctrl || c.is_ascii_lowercase() || ('4'..='7').contains(&c),
             Key::Named(n) => match n {
                 Named::Enter | Named::Esc | Named::Backspace => !ctrl && !shift,
                 Named::Space => !shift,
@@ -504,6 +504,9 @@ mod tests {
             "ctrl+left",
             "f5",
             "ctrl+j",
+            "ctrl+/",
+            "ctrl+_",
+            "alt+_",
         ] {
             assert!(p(s).legacy_reachable(), "{s}");
         }
@@ -515,6 +518,8 @@ mod tests {
             "shift+enter",
             "super+a",
             "ctrl+enter",
+            // Sent as 0x7f like backspace, or 0x1f like ctrl+/.
+            "ctrl+?",
         ] {
             assert!(!p(s).legacy_reachable(), "{s}");
         }
