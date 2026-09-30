@@ -5,6 +5,7 @@ mod config;
 mod edit;
 mod engine;
 mod history;
+mod i18n;
 mod instance;
 mod keys;
 mod paths;
@@ -19,7 +20,7 @@ use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use anyhow::Context as _;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use crossterm::event::{self, Event};
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
@@ -27,20 +28,17 @@ use rime_dl::{Library, Notification, Rime, Traits};
 
 use crate::app::{App, Effect, Exit, Level, Mode};
 use crate::clipboard::Clipboard;
-use crate::config::{Config, DeployOnStartup, Keymap, ThemeMode, Tristate};
+use crate::config::{Config, DeployOnStartup, Keymap, Language, ThemeMode, Tristate};
 use crate::edit::EditFile;
 use crate::engine::{ImeEngine, RimeEngine};
 use crate::history::History;
+use crate::i18n::Lang;
 use crate::instance::Instance;
 use crate::theme::Theme;
 use crate::ui::UiContext;
 
 #[derive(Parser)]
-#[command(
-    version,
-    about = "端砚：基于 rime 的终端中文输入草稿板",
-    args_conflicts_with_subcommands = true
-)]
+#[command(version, args_conflicts_with_subcommands = true)]
 struct Cli {
     /// Edit FILE and write it back on submit (for use as $EDITOR).
     #[arg(value_name = "FILE", conflicts_with_all = ["stdout", "print_default_config"])]
@@ -192,8 +190,19 @@ impl Setup {
     }
 }
 
+fn locale_lang() -> Lang {
+    Lang::detect(|k| std::env::var(k).ok())
+}
+
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    // `--help` is printed before the config is read, so its language follows
+    // the locale only.
+    let about = locale_lang().tr(
+        "端砚：基于 rime 的终端中文输入草稿板",
+        "端硯：基於 rime 的終端機中文輸入草稿板",
+    );
+    let matches = Cli::command().about(about).get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if cli.print_default_config {
         print!("{}", config::DEFAULT_CONFIG);
         return ExitCode::SUCCESS;
@@ -419,6 +428,12 @@ fn tui(
     }));
     tty::enter(&mut tty, modes)?;
 
+    let lang = match cfg.tui.language {
+        Language::Auto => locale_lang(),
+        Language::Simplified => Lang::Simplified,
+        Language::Traditional => Lang::Traditional,
+    };
+    let tr = |s, t| lang.tr(s, t);
     let ctx = UiContext {
         inline,
         theme,
@@ -428,35 +443,52 @@ fn tui(
         info: vec![
             ("librime".into(), lib_desc),
             (
-                "键盘协议".into(),
+                tr("键盘协议", "鍵盤協定").into(),
                 if kkp {
-                    "kitty keyboard protocol 已启用".into()
+                    tr(
+                        "kitty keyboard protocol 已启用",
+                        "kitty keyboard protocol 已啟用",
+                    )
                 } else {
-                    "传统编码（kitty keyboard protocol 未启用）".into()
-                },
+                    tr(
+                        "传统编码（kitty keyboard protocol 未启用）",
+                        "傳統編碼（kitty keyboard protocol 未啟用）",
+                    )
+                }
+                .into(),
             ),
-            ("配置文件".into(), setup.config_path.display().to_string()),
             (
-                "用户数据目录".into(),
+                tr("配置文件", "設定檔").into(),
+                setup.config_path.display().to_string(),
+            ),
+            (
+                tr("用户数据目录", "使用者資料目錄").into(),
                 setup.user_data_dir.display().to_string(),
             ),
             (
-                "共享数据目录".into(),
+                tr("共享数据目录", "共用資料目錄").into(),
                 match setup.shared_source {
                     Some(paths::SharedDirSource::Bundled) => format!(
-                        "{}（bundled 包自带的 opencc 数据）",
-                        setup.shared_data_dir.display()
+                        "{}{}",
+                        setup.shared_data_dir.display(),
+                        tr(
+                            "（bundled 包自带的 opencc 数据）",
+                            "（bundled 套件內附的 opencc 資料）",
+                        )
                     ),
                     _ => setup.shared_data_dir.display().to_string(),
                 },
             ),
-            ("日志目录".into(), setup.log_dir.display().to_string()),
             (
-                "用户词典".into(),
+                tr("日志目录", "記錄檔目錄").into(),
+                setup.log_dir.display().to_string(),
+            ),
+            (
+                tr("用户词典", "使用者詞典").into(),
                 if instance.is_primary() {
-                    "学习新词"
+                    tr("学习新词", "學習新詞")
                 } else {
-                    "已有端砚在运行，不学习新词"
+                    tr("已有端砚在运行，不学习新词", "已有端硯在執行，不學習新詞")
                 }
                 .into(),
             ),
@@ -485,13 +517,23 @@ fn tui(
         app.open_file(&edit.original);
     }
     app.copy_on_submit = cfg.general.copy_on_submit;
+    app.lang = lang;
     app.deploy_hint = deploy_hint;
     app.secondary = !instance.is_primary();
     if start_deploy {
         app.engine.start_deploy();
-        app.notify(Level::Info, "首次运行，正在部署 rime…");
+        app.notify(
+            Level::Info,
+            tr("首次运行，正在部署 rime…", "首次執行，正在部署 rime…"),
+        );
     } else if first_run {
-        app.notify(Level::Error, "rime 尚未部署，请关闭其它端砚实例后重新启动");
+        app.notify(
+            Level::Error,
+            tr(
+                "rime 尚未部署，请关闭其它端砚实例后重新启动",
+                "rime 尚未部署，請關閉其他端硯執行個體後重新啟動",
+            ),
+        );
     }
 
     let result = event_loop(&mut terminal, &mut app, &ctx, &clipboard, edit, &mut tty);
@@ -555,14 +597,20 @@ fn event_loop(
             match effect {
                 Effect::Copy(text) => {
                     if let Err(e) = clipboard.copy(&text, tty) {
-                        app.notify(Level::Error, format!("复制失败：{e}"));
+                        app.notify(
+                            Level::Error,
+                            format!("{}{e}", app.lang.tr("复制失败：", "複製失敗：")),
+                        );
                     }
                 }
                 // Saved from inside the UI so that a failure leaves the
                 // text on screen for another try.
                 Effect::Save(text) => match edit.map(|e| e.save(&text)) {
                     Some(Ok(())) => app.exit = Some(Exit::Saved),
-                    Some(Err(e)) => app.notify(Level::Error, format!("保存失败：{e}")),
+                    Some(Err(e)) => app.notify(
+                        Level::Error,
+                        format!("{}{e}", app.lang.tr("保存失败：", "儲存失敗：")),
+                    ),
                     None => {}
                 },
             }

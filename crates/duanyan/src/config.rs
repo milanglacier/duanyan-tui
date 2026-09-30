@@ -80,6 +80,14 @@ pub enum CandidateLayout {
     Vertical,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Language {
+    Auto,
+    Simplified,
+    Traditional,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Tui {
@@ -87,6 +95,7 @@ pub struct Tui {
     pub mouse: bool,
     pub candidate_layout: CandidateLayout,
     pub show_candidate_comment: bool,
+    pub language: Language,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -403,6 +412,7 @@ mod tests {
         let cfg = Config::default_config();
         assert!(cfg.general.copy_on_submit);
         assert_eq!(cfg.rime.deploy_on_startup, DeployOnStartup::Notify);
+        assert_eq!(cfg.tui.language, Language::Auto);
         for kkp in [false, true] {
             let km = Keymap::build(&cfg.keybinding, kkp).unwrap();
             assert_eq!(
@@ -501,8 +511,21 @@ mod tests {
     }
 
     #[test]
+    fn language_values() {
+        for (value, want) in [
+            ("auto", Language::Auto),
+            ("simplified", Language::Simplified),
+            ("traditional", Language::Traditional),
+        ] {
+            let cfg = Config::from_str(&format!("[tui]\nlanguage = \"{value}\"\n")).unwrap();
+            assert_eq!(cfg.tui.language, want);
+        }
+    }
+
+    #[test]
     fn unknown_fields_rejected() {
         assert!(Config::from_str("[tui]\nmouse_mode = true\n").is_err());
         assert!(Config::from_str("[rime]\ndeploy_on_startup = \"sometimes\"\n").is_err());
+        assert!(Config::from_str("[tui]\nlanguage = \"zh_TW\"\n").is_err());
     }
 }
