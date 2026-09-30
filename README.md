@@ -166,7 +166,7 @@ bind -x '"\C-x\C-d": __duanyan_widget'
 deploy_on_startup = "auto"   # notify | auto | never
 
 [tui]
-language = "traditional"     # auto | simplified | traditional
+language = "auto"     # auto | simplified | traditional
 
 [theme]
 mode = "dark"                # auto | dark | light
@@ -175,8 +175,6 @@ mode = "dark"                # auto | dark | light
 # backend = "command"          # 推荐不填（默认 OSC 52，自动处理）
 # command = ["wl-copy"]
 ```
-
-界面文字默认跟随系统语言（`LC_ALL`、`LC_MESSAGES`、`LANG`、`LANGUAGE`）：台湾、香港、澳门的中文环境（如 `zh_TW.UTF-8`）显示繁体，其余显示简体。繁体界面采用台湾用语。候选词的简繁由 rime 方案决定，与这个选项无关。
 
 ## 按键
 
