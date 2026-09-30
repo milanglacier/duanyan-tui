@@ -20,6 +20,7 @@ kitty_keyboard = "auto"                     # auto | on | off
 mouse = true
 candidate_layout = "horizontal"             # horizontal | vertical
 show_candidate_comment = true
+language = "auto"                           # auto | simplified | traditional
 
 [theme]
 mode = "auto"                               # auto | dark | light

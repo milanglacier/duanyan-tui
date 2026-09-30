@@ -12,6 +12,7 @@ use crate::buffer::Buffer;
 use crate::config::{GlobalAction, HistoryAction, InputAction, Keymap};
 use crate::engine::{EngineEvent, ImeEngine, ImeSnapshot, Maintenance};
 use crate::history::History;
+use crate::i18n::Lang;
 use crate::keys::{self, KeySpec};
 
 const MESSAGE_TTL: Duration = Duration::from_secs(3);
@@ -146,6 +147,7 @@ pub struct App<E: ImeEngine> {
     /// within `MESSAGE_TTL` discards the changes.
     discard_armed: Option<Instant>,
     pub copy_on_submit: bool,
+    pub lang: Lang,
     /// Config changed since the last deploy (`deploy_on_startup = notify`).
     pub deploy_hint: bool,
     /// Another instance owns the user dictionary.
@@ -181,6 +183,7 @@ impl<E: ImeEngine> App<E> {
             edit_original: String::new(),
             discard_armed: None,
             copy_on_submit: true,
+            lang: Lang::default(),
             deploy_hint: false,
             secondary: false,
             exit: None,
@@ -326,7 +329,13 @@ impl<E: ImeEngine> App<E> {
 
     fn start(&mut self, kind: Maintenance) {
         if self.secondary {
-            self.notify(Level::Warning, "已有端砚在运行，不能部署或同步");
+            self.notify(
+                Level::Warning,
+                self.lang.tr(
+                    "已有端砚在运行，不能部署或同步",
+                    "已有端硯在執行，無法部署或同步",
+                ),
+            );
             return;
         }
         let started = match kind {
@@ -334,7 +343,11 @@ impl<E: ImeEngine> App<E> {
             Maintenance::Sync => self.engine.start_sync(),
         };
         if !started {
-            self.notify(Level::Error, "无法启动 rime 维护任务");
+            self.notify(
+                Level::Error,
+                self.lang
+                    .tr("无法启动 rime 维护任务", "無法啟動 rime 維護工作"),
+            );
         }
         self.refresh();
     }
@@ -347,7 +360,13 @@ impl<E: ImeEngine> App<E> {
             self.exit = Some(Exit::Cancel);
         } else {
             self.discard_armed = Some(Instant::now());
-            self.notify(Level::Warning, "文件已修改，再按一次放弃修改");
+            self.notify(
+                Level::Warning,
+                self.lang.tr(
+                    "文件已修改，再按一次放弃修改",
+                    "檔案已修改，再按一次放棄修改",
+                ),
+            );
         }
     }
 
@@ -418,7 +437,13 @@ impl<E: ImeEngine> App<E> {
             .history
             .push(text.clone(), jiff::Timestamp::now().as_second())
         {
-            self.notify(Level::Error, format!("写入历史失败：{e}"));
+            self.notify(
+                Level::Error,
+                format!(
+                    "{}{e}",
+                    self.lang.tr("写入历史失败：", "寫入歷史紀錄失敗：")
+                ),
+            );
         }
         self.history_sel = self.history.len().saturating_sub(1);
         if self.mode == Mode::Stdout {
@@ -452,7 +477,13 @@ impl<E: ImeEngine> App<E> {
             }
             HistoryAction::Delete => {
                 if let Err(e) = self.history.remove(self.history_sel) {
-                    self.notify(Level::Error, format!("删除历史失败：{e}"));
+                    self.notify(
+                        Level::Error,
+                        format!(
+                            "{}{e}",
+                            self.lang.tr("删除历史失败：", "刪除歷史紀錄失敗：")
+                        ),
+                    );
                 }
                 self.copied = None;
                 if self.history.is_empty() {
@@ -544,7 +575,10 @@ impl<E: ImeEngine> App<E> {
                     Some(r) if !r.is_empty() => {
                         let text = self.buffer.text()[r].to_string();
                         self.effects.push(Effect::Copy(text));
-                        self.notify(Level::Success, "已复制选中文字");
+                        self.notify(
+                            Level::Success,
+                            self.lang.tr("已复制选中文字", "已複製選取的文字"),
+                        );
                     }
                     _ => self.selection = None,
                 }
@@ -571,11 +605,18 @@ impl<E: ImeEngine> App<E> {
         for ev in self.engine.poll() {
             match ev {
                 EngineEvent::Finished { kind, ok } => {
+                    let tr = |s, t| self.lang.tr(s, t);
                     let (what, level) = match (kind, ok) {
-                        (Maintenance::Deploy, true) => ("部署完成", Level::Success),
-                        (Maintenance::Deploy, false) => ("部署失败，详见 rime 日志", Level::Error),
-                        (Maintenance::Sync, true) => ("同步完成", Level::Success),
-                        (Maintenance::Sync, false) => ("同步失败，详见 rime 日志", Level::Error),
+                        (Maintenance::Deploy, true) => (tr("部署完成", "部署完成"), Level::Success),
+                        (Maintenance::Deploy, false) => (
+                            tr("部署失败，详见 rime 日志", "部署失敗，詳見 rime 記錄檔"),
+                            Level::Error,
+                        ),
+                        (Maintenance::Sync, true) => (tr("同步完成", "同步完成"), Level::Success),
+                        (Maintenance::Sync, false) => (
+                            tr("同步失败，详见 rime 日志", "同步失敗，詳見 rime 記錄檔"),
+                            Level::Error,
+                        ),
                     };
                     if ok && kind == Maintenance::Deploy {
                         self.deploy_hint = false;

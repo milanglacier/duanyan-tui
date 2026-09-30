@@ -34,12 +34,15 @@ mkdir -p "$tmp/config/duanyan/rime" "$tmp/state"
 printf 'patch:\n  schema_list:\n    - schema: luna_pinyin_simp\n' \
     >"$tmp/config/duanyan/rime/default.custom.yaml"
 
+# The UI language follows the locale; pin it so that the developer's locale
+# does not change the expected text. DUANYAN_E2E_LOCALE selects another one.
 cat >"$tmp/duanyan" <<EOF
 #!/usr/bin/env bash
 export XDG_CONFIG_HOME="$tmp/config" XDG_STATE_HOME="$tmp/state"
 export DUANYAN_LIBRIME_PATH="$DUANYAN_LIBRIME_PATH"
 export DUANYAN_RIME_SHARED_DIR="$DUANYAN_RIME_SHARED_DIR"
-exec "$bin" "\$@"
+# Through env: bash would warn when it cannot load the locale itself.
+exec env -u LANGUAGE -u LC_ALL LC_MESSAGES="\${DUANYAN_E2E_LOCALE:-zh_CN.UTF-8}" "$bin" "\$@"
 EOF
 chmod +x "$tmp/duanyan"
 
@@ -171,6 +174,25 @@ step "secondary instance degrades"
 t new-window -d -n second "$tmp/duanyan; sleep 600"
 wait_for e2e:second "已有端砚在运行，不学习新词" && echo "ok: secondary warning"
 t kill-window -t e2e:second
+
+step "traditional Chinese UI from the locale, simplified from the config"
+t new-window -d -n trad "DUANYAN_E2E_LOCALE=zh_TW.UTF-8 $tmp/duanyan; sleep 600"
+wait_for e2e:trad "端硯-tui" && echo "ok: traditional header"
+wait_for e2e:trad "已有端硯在執行，不學習新詞" && wait_for e2e:trad "Tab  歷史" &&
+    echo "ok: traditional status bar"
+t send-keys -t e2e:trad F1
+wait_for e2e:trad "說明 · j/k 捲動" && wait_for e2e:trad "全域（不經過 rime）" && echo "ok: traditional help"
+t send-keys -t e2e:trad Escape
+t send-keys -t e2e:trad -l "nihao "
+t send-keys -t e2e:trad Enter
+wait_for e2e:trad "已複製到剪貼簿" && echo "ok: traditional copied marker"
+t kill-window -t e2e:trad
+printf '[tui]\nlanguage = "simplified"\n' >"$tmp/simplified.toml"
+t new-window -d -n simp "DUANYAN_E2E_LOCALE=zh_TW.UTF-8 $tmp/duanyan --config $tmp/simplified.toml; sleep 600"
+wait_for e2e:simp "已有端砚在运行，不学习新词" && echo "ok: the config overrides the locale"
+t kill-window -t e2e:simp
+check "--help follows the locale" "$(DUANYAN_E2E_LOCALE=zh_TW.UTF-8 "$tmp/duanyan" --help | head -1)" \
+    "端硯：基於 rime 的終端機中文輸入草稿板"
 
 step "fullscreen: ctrl+c quits with 0"
 t send-keys -t e2e:full C-c

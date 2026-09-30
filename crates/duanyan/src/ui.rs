@@ -15,6 +15,7 @@ use crate::app::{App, CellHit, Focus, HitMap, Level, Mode, RowHit, TextHits};
 use crate::buffer::cell;
 use crate::config::{CandidateLayout, GlobalAction, HistoryAction, InputAction};
 use crate::engine::{Candidate, ImeEngine, ImeSnapshot, Maintenance, Preedit};
+use crate::i18n::Lang;
 use crate::keys::KeySpec;
 use crate::theme::Theme;
 
@@ -85,7 +86,7 @@ fn draw_fullscreen<E: ImeEngine>(
 
     // Header.
     let mut spans = vec![Span::styled(
-        "端砚-tui",
+        app.lang.tr("端砚-tui", "端硯-tui"),
         Style::default().fg(t.title).add_modifier(Modifier::BOLD),
     )];
     if !app.snapshot.schema_name.is_empty() {
@@ -146,7 +147,7 @@ fn draw_fullscreen<E: ImeEngine>(
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(if focused { t.border_focus } else { t.border }))
         .title(Span::styled(
-            " 输入 ",
+            app.lang.tr(" 输入 ", " 輸入 "),
             Style::default().fg(if focused { t.accent } else { t.subtext }),
         ));
     let content = block.inner(input);
@@ -490,7 +491,10 @@ fn draw_candidate_popup<E: ImeEngine>(
     };
     // Cover the text underneath, including the gaps between candidates.
     f.render_widget(Clear, rect);
-    f.render_widget(Block::default().style(Style::default().bg(ctx.theme.bg)), rect);
+    f.render_widget(
+        Block::default().style(Style::default().bg(ctx.theme.bg)),
+        rect,
+    );
     let area = Rect::new(rect.x, rect.y, rect.width.saturating_sub(1), rect.height);
     draw_candidates(f, app, ctx, area, hits);
 }
@@ -714,13 +718,21 @@ fn draw_status<E: ImeEngine>(
         let key = key_label(&app.keymap.keys_for("global", GlobalAction::Deploy.name()))
             .unwrap_or_default();
         notes.push((
-            format!("⚠ 配置已变更 · {key} 部署"),
+            match app.lang {
+                Lang::Simplified => format!("⚠ 配置已变更 · {key} 部署"),
+                Lang::Traditional => format!("⚠ 設定已變更 · {key} 部署"),
+            },
             Style::default().fg(t.warning),
         ));
     }
     if app.secondary {
         notes.push((
-            "⚠ 已有端砚在运行，不学习新词".into(),
+            app.lang
+                .tr(
+                    "⚠ 已有端砚在运行，不学习新词",
+                    "⚠ 已有端硯在執行，不學習新詞",
+                )
+                .into(),
             Style::default().fg(t.warning),
         ));
     }
@@ -730,44 +742,45 @@ fn draw_status<E: ImeEngine>(
 
     // Key hints on the right, dropped when they do not fit.
     let km = &app.keymap;
-    let hint = |table: &str, action: &str, what: &str| {
-        key_label(&km.keys_for(table, action)).map(|k| (k, what.to_string()))
+    let hint = |table: &str, action: &str, simplified, traditional| {
+        key_label(&km.keys_for(table, action))
+            .map(|k| (k, app.lang.tr(simplified, traditional).to_string()))
     };
     let hints: Vec<(String, String)> = if app.mode == Mode::Stdout {
         [
-            hint("input", InputAction::Submit.name(), "输出"),
-            hint("input", InputAction::Cancel.name(), "取消"),
-            hint("global", GlobalAction::Help.name(), "帮助"),
+            hint("input", InputAction::Submit.name(), "输出", "輸出"),
+            hint("input", InputAction::Cancel.name(), "取消", "取消"),
+            hint("global", GlobalAction::Help.name(), "帮助", "說明"),
         ]
         .into_iter()
         .flatten()
         .collect()
     } else if app.mode == Mode::Edit {
         [
-            hint("input", InputAction::Submit.name(), "保存"),
-            hint("input", InputAction::Cancel.name(), "放弃"),
-            hint("input", InputAction::Newline.name(), "换行"),
-            hint("global", GlobalAction::Help.name(), "帮助"),
+            hint("input", InputAction::Submit.name(), "保存", "儲存"),
+            hint("input", InputAction::Cancel.name(), "放弃", "放棄"),
+            hint("input", InputAction::Newline.name(), "换行", "換行"),
+            hint("global", GlobalAction::Help.name(), "帮助", "說明"),
         ]
         .into_iter()
         .flatten()
         .collect()
     } else if app.focus == Focus::History {
         [
-            hint("history", HistoryAction::Copy.name(), "复制"),
-            hint("history", HistoryAction::Recall.name(), "取回"),
-            hint("history", HistoryAction::Delete.name(), "删除"),
-            hint("history", HistoryAction::FocusInput.name(), "输入"),
-            hint("global", GlobalAction::Help.name(), "帮助"),
+            hint("history", HistoryAction::Copy.name(), "复制", "複製"),
+            hint("history", HistoryAction::Recall.name(), "取回", "取回"),
+            hint("history", HistoryAction::Delete.name(), "删除", "刪除"),
+            hint("history", HistoryAction::FocusInput.name(), "输入", "輸入"),
+            hint("global", GlobalAction::Help.name(), "帮助", "說明"),
         ]
         .into_iter()
         .flatten()
         .collect()
     } else {
         [
-            hint("input", InputAction::FocusHistory.name(), "历史"),
-            hint("input", InputAction::Newline.name(), "换行"),
-            hint("global", GlobalAction::Help.name(), "帮助"),
+            hint("input", InputAction::FocusHistory.name(), "历史", "歷史"),
+            hint("input", InputAction::Newline.name(), "换行", "換行"),
+            hint("global", GlobalAction::Help.name(), "帮助", "說明"),
         ]
         .into_iter()
         .flatten()
@@ -857,7 +870,10 @@ fn draw_history<E: ImeEngine>(
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(if focused { t.border_focus } else { t.border }))
         .title(Span::styled(
-            format!(" 历史 · {} 条 ", app.history.len()),
+            match app.lang {
+                Lang::Simplified => format!(" 历史 · {} 条 ", app.history.len()),
+                Lang::Traditional => format!(" 歷史紀錄 · {} 筆 ", app.history.len()),
+            },
             Style::default().fg(if focused { t.accent } else { t.subtext }),
         ));
     let inner = block.inner(area);
@@ -870,7 +886,8 @@ fn draw_history<E: ImeEngine>(
     if entries.is_empty() {
         f.render_widget(
             Paragraph::new(Span::styled(
-                "提交的文字会出现在这里",
+                app.lang
+                    .tr("提交的文字会出现在这里", "送出的文字會出現在這裡"),
                 Style::default().fg(t.subtext),
             ))
             .centered(),
@@ -882,7 +899,7 @@ fn draw_history<E: ImeEngine>(
     let tz = TimeZone::system();
     let today = jiff::Zoned::now().date();
     let copied = app.copied.map(|(i, _)| i);
-    let marker = "✓ 已复制到剪贴板";
+    let marker = app.lang.tr("✓ 已复制到剪贴板", "✓ 已複製到剪貼簿");
     let max_expand = (inner.height as usize / 2).max(1);
 
     // Rows: (entry index, first row of entry?, spans).
@@ -966,41 +983,42 @@ fn draw_history<E: ImeEngine>(
     }
 }
 
-fn action_label(table: &str, action: &str) -> &'static str {
+fn action_label(lang: Lang, table: &str, action: &str) -> &'static str {
+    let tr = |s, t| lang.tr(s, t);
     match (table, action) {
-        ("global", "quit") => "退出",
-        ("global", "help") => "帮助",
-        ("global", "deploy") => "重新部署 rime",
-        ("global", "sync") => "同步用户词典",
-        ("input", "submit") => "提交 / 保存",
-        ("input", "newline") => "换行",
-        ("input", "focus_history") => "切到历史",
-        ("input", "cancel") => "取消 / 清空 / 放弃",
-        ("input", "left") => "左移",
-        ("input", "right") => "右移",
-        ("input", "word_left") => "前一词",
-        ("input", "word_right") => "后一词",
-        ("input", "prev_line") => "上一行",
-        ("input", "next_line") => "下一行",
-        ("input", "home") => "行首",
-        ("input", "end") => "行尾",
-        ("input", "buffer_start") => "文本开头",
-        ("input", "buffer_end") => "文本结尾",
-        ("input", "backspace") => "删除前一字",
-        ("input", "delete") => "删除后一字",
-        ("input", "kill_word") => "删除前一词",
-        ("input", "kill_to_start") => "删到行首",
-        ("input", "kill_to_end") => "删到行尾",
-        ("input", "undo") => "撤销",
-        ("input", "redo") => "重做",
-        ("history", "next") => "下一条",
-        ("history", "prev") => "上一条",
-        ("history", "first") => "第一条",
-        ("history", "last") => "最后一条",
-        ("history", "copy") => "复制",
-        ("history", "recall") => "取回编辑",
-        ("history", "delete") => "删除",
-        ("history", "focus_input") => "返回输入",
+        ("global", "quit") => tr("退出", "結束"),
+        ("global", "help") => tr("帮助", "說明"),
+        ("global", "deploy") => tr("重新部署 rime", "重新部署 rime"),
+        ("global", "sync") => tr("同步用户词典", "同步使用者詞典"),
+        ("input", "submit") => tr("提交 / 保存", "送出 / 儲存"),
+        ("input", "newline") => tr("换行", "換行"),
+        ("input", "focus_history") => tr("切到历史", "切換到歷史紀錄"),
+        ("input", "cancel") => tr("取消 / 清空 / 放弃", "取消 / 清除 / 放棄"),
+        ("input", "left") => tr("左移", "左移"),
+        ("input", "right") => tr("右移", "右移"),
+        ("input", "word_left") => tr("前一词", "前一個詞"),
+        ("input", "word_right") => tr("后一词", "後一個詞"),
+        ("input", "prev_line") => tr("上一行", "上一行"),
+        ("input", "next_line") => tr("下一行", "下一行"),
+        ("input", "home") => tr("行首", "行首"),
+        ("input", "end") => tr("行尾", "行尾"),
+        ("input", "buffer_start") => tr("文本开头", "文字開頭"),
+        ("input", "buffer_end") => tr("文本结尾", "文字結尾"),
+        ("input", "backspace") => tr("删除前一字", "刪除前一個字"),
+        ("input", "delete") => tr("删除后一字", "刪除後一個字"),
+        ("input", "kill_word") => tr("删除前一词", "刪除前一個詞"),
+        ("input", "kill_to_start") => tr("删到行首", "刪到行首"),
+        ("input", "kill_to_end") => tr("删到行尾", "刪到行尾"),
+        ("input", "undo") => tr("撤销", "復原"),
+        ("input", "redo") => tr("重做", "重做"),
+        ("history", "next") => tr("下一条", "下一筆"),
+        ("history", "prev") => tr("上一条", "上一筆"),
+        ("history", "first") => tr("第一条", "第一筆"),
+        ("history", "last") => tr("最后一条", "最後一筆"),
+        ("history", "copy") => tr("复制", "複製"),
+        ("history", "recall") => tr("取回编辑", "取回編輯"),
+        ("history", "delete") => tr("删除", "刪除"),
+        ("history", "focus_input") => tr("返回输入", "返回輸入"),
         _ => "",
     }
 }
@@ -1016,7 +1034,10 @@ fn draw_help<E: ImeEngine>(f: &mut Frame, app: &App<E>, ctx: &UiContext, area: R
         .border_style(Style::default().fg(t.border_focus))
         .style(Style::default().bg(t.bg).fg(t.text))
         .title(Span::styled(
-            " 帮助 · j/k 滚动 · 其它键关闭 ",
+            app.lang.tr(
+                " 帮助 · j/k 滚动 · 其它键关闭 ",
+                " 說明 · j/k 捲動 · 其他鍵關閉 ",
+            ),
             Style::default().fg(t.accent),
         ));
     let inner = block.inner(r);
@@ -1027,11 +1048,18 @@ fn draw_help<E: ImeEngine>(f: &mut Frame, app: &App<E>, ctx: &UiContext, area: R
     let key_style = Style::default().fg(t.accent);
     let kkp = app.keymap.kkp;
     let mut lines: Vec<Line> = Vec::new();
+    let tr = |s, t| app.lang.tr(s, t);
     for (table, title) in [
-        ("global", "全局（不经过 rime）"),
-        ("compat", "compat（转换后发给 rime）"),
-        ("input", "输入框（rime 未处理时）"),
-        ("history", "历史面板"),
+        ("global", tr("全局（不经过 rime）", "全域（不經過 rime）")),
+        (
+            "compat",
+            tr("compat（转换后发给 rime）", "compat（轉換後送給 rime）"),
+        ),
+        (
+            "input",
+            tr("输入框（rime 未处理时）", "輸入框（rime 未處理時）"),
+        ),
+        ("history", tr("历史面板", "歷史紀錄面板")),
     ] {
         lines.push(Line::from(Span::styled(title, head)));
         for (tb, action, keys) in &app.keymap.listing {
@@ -1041,11 +1069,11 @@ fn draw_help<E: ImeEngine>(f: &mut Frame, app: &App<E>, ctx: &UiContext, area: R
             let label = if table == "compat" {
                 format!("→ {action}")
             } else {
-                action_label(table, action).to_string()
+                action_label(app.lang, table, action).to_string()
             };
-            let mut spans = vec![Span::raw(format!("  {}", pad(&label, 18)))];
+            let mut spans = vec![Span::raw(format!("  {}", pad(&label, 20)))];
             if keys.is_empty() {
-                spans.push(Span::styled("（未绑定）", dim));
+                spans.push(Span::styled(tr("（未绑定）", "（未綁定）"), dim));
             }
             for (j, k) in keys.iter().enumerate() {
                 if j > 0 {
@@ -1054,7 +1082,7 @@ fn draw_help<E: ImeEngine>(f: &mut Frame, app: &App<E>, ctx: &UiContext, area: R
                 spans.push(Span::styled(k.to_string(), key_style));
                 if !kkp && !k.legacy_reachable() {
                     spans.push(Span::styled(
-                        "（当前终端不可用）",
+                        tr("（当前终端不可用）", "（目前終端機不支援）"),
                         Style::default().fg(t.warning),
                     ));
                 }
@@ -1063,16 +1091,19 @@ fn draw_help<E: ImeEngine>(f: &mut Frame, app: &App<E>, ctx: &UiContext, area: R
         }
         lines.push(Line::default());
     }
-    lines.push(Line::from(Span::styled("环境", head)));
+    lines.push(Line::from(Span::styled(tr("环境", "環境"), head)));
     for (k, v) in &ctx.info {
         lines.push(Line::from(vec![
-            Span::styled(format!("  {}", pad(k, 18)), dim),
+            Span::styled(format!("  {}", pad(k, 20)), dim),
             Span::raw(v.clone()),
         ]));
     }
     lines.push(Line::default());
     lines.push(Line::from(Span::styled(
-        "提示：改动 lua/、opencc/ 等子目录不会被自动检测，请手动部署。",
+        tr(
+            "提示：改动 lua/、opencc/ 等子目录不会被自动检测，请手动部署。",
+            "提示：變更 lua/、opencc/ 等子目錄不會被自動偵測，請手動部署。",
+        ),
         dim,
     )));
     let max_scroll = (lines.len() as u16).saturating_sub(inner.height);
