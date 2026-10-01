@@ -28,9 +28,15 @@
 - `cargo test`、`cargo clippy --all-targets`、`scripts/e2e.sh` 全部通过。
   `cargo fmt --check` 只报 `app.rs` 里一处已有的格式问题，与本次改动无关，未改。
 
+- release workflow（不填 tag）：第一次运行两个 macOS target 失败，原因是 macOS 版
+  librime 的插件在 glog 初始化前往 stderr 写 INFO 日志，测试把它们当成了部署错误；
+  改成只认 glog 的 ERROR / FATAL 行后，第二次运行
+  （https://github.com/milanglacier/duanyan-tui/actions/runs/36922786404）四个
+  target 全部通过。aarch64 macOS 的 `-bundled-frost` 包 49 MB（`-bundled` 5.7 MB），
+  内含 `licenses/rime-frost/{LICENSE,SOURCE}`、`zh-moqi.gram` 和 `rime-plugins/`。
+
 ## 待做
 
-- `gh workflow run release.yml`（不填 tag）跑通四个 target，检查包的大小和
-  `licenses/rime-frost/`。需要先推送分支。
-- 可选：在 `ubuntu:22.04` 容器里装 `librime1 librime-data` 后手动跑一遍
-  `-bundled-frost` 包（plan.md §9）。e2e 已用 `XDG_DATA_DIRS` 模拟了系统数据。
+- 合并到 main，把本计划移到 `completed/`。
+- 另行处理：macOS 上用 bundled 包启动 TUI 时，上面那几行 INFO 日志大概也会写进
+  `stderr.log`（现有 `-bundled` 包的问题，与本计划无关，未验证）。
