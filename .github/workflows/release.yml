@@ -29,6 +29,9 @@ env:
   LIBRIME_VERSION: 1.17.0
   LIBRIME_MACOS_ASSET: rime-33e7814-macOS-universal.tar.bz2
   LIBRIME_MACOS_SHA256: 11d8dc663c6ec06d5ccb6111ba664a9e7b631b703ac6acd07cffbac664021850
+  # The schemas shipped in the `-bundled-frost` archives.
+  RIME_FROST_VERSION: 1.0.4
+  RIME_FROST_SHA256: 4f4998ae83f63d757c0a4ace192f69d48265bddfabe231642b73e3739ed0f2f5
 
 jobs:
   librime-linux:
@@ -123,6 +126,8 @@ jobs:
       - name: Package
         id: package
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           name="duanyan-${TAG:-dev}-${{ matrix.target }}"
           mkdir "$name"
@@ -151,11 +156,38 @@ jobs:
           fi
           tar -czf "$bundled.tar.gz" "$bundled"
 
-          for f in "$name.tar.gz" "$bundled.tar.gz"; do
+          # The bundled archive plus rime-frost as the shared data, which
+          # duanyan prefers over system rime data because it has a
+          # default.yaml. rime-frost's opencc configs replace the ones above.
+          frost="$name-bundled-frost"
+          cp -R "$bundled" "$frost"
+          gh release download "$RIME_FROST_VERSION" -R gaboolic/rime-frost -p rime-frost-schemas.zip
+          echo "$RIME_FROST_SHA256  rime-frost-schemas.zip" | shasum -a 256 -c
+          # -DD gives the files the packaging time instead of rime-frost's
+          # release time. duanyan redeploys when a yaml file is newer than the
+          # last build, so upgrading to an archive with a newer rime-frost
+          # must not bring older mtimes.
+          unzip -q -o -DD rime-frost-schemas.zip -d "$frost/share/rime-data"
+          mkdir "$frost/licenses/rime-frost"
+          mv "$frost/share/rime-data/LICENSE" "$frost/licenses/rime-frost/"
+          rm "$frost/share/rime-data/README.md"
+          cat > "$frost/licenses/rime-frost/SOURCE" <<EOF
+          share/rime-data is rime-frost $RIME_FROST_VERSION, unmodified:
+          https://github.com/gaboolic/rime-frost/releases/tag/$RIME_FROST_VERSION
+          rime-frost-schemas.zip, sha256 $RIME_FROST_SHA256
+
+          zh-moqi.gram is built with https://github.com/gaboolic/rime-build-grammar
+          EOF
+          tar -czf "$frost.tar.gz" "$frost"
+
+          for f in "$name.tar.gz" "$bundled.tar.gz" "$frost.tar.gz"; do
             shasum -a 256 "$f" > "$f.sha256"
           done
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "bundled=$bundled" >> "$GITHUB_OUTPUT"
+          {
+            echo "name=$name"
+            echo "bundled=$bundled"
+            echo "frost=$frost"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Test the bundled librime
         shell: bash
@@ -204,16 +236,68 @@ jobs:
           RIME_INCLUDE_DIR="$PWD/${{ steps.package.outputs.include }}" \
             cargo test --locked --package rime-dl --target ${{ matrix.target }}
 
+      - name: Test the bundled rime-frost
+        shell: bash
+        env:
+          FROST: ${{ steps.package.outputs.frost }}
+          LIB: ${{ steps.package.outputs.lib }}
+        run: |
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/frost/config" XDG_STATE_HOME="$RUNNER_TEMP/frost/state"
+          duanyan() {
+            env -u DUANYAN_LIBRIME_PATH -u DUANYAN_RIME_SHARED_DIR "$FROST/duanyan" "$@"
+          }
+          # The bundled schemas come before any system rime data, so unlike
+          # the test above this one never needs to be skipped.
+          info=$(duanyan info)
+          echo "$info"
+          line=$(grep '^shared_data_dir ' <<< "$info")
+          data="$(cd "$FROST/share/rime-data" && pwd -P)"
+          if [[ "$line" != *" $data (bundled rime data)" ]]; then
+            echo "::error::expected shared_data_dir $data (bundled rime data), got: $line"
+            exit 1
+          fi
+
+          # The first deploy compiles rime-frost; glog copies errors to stderr.
+          # On macOS the plugins also log INFO lines there before glog is
+          # initialized, so only ERROR and FATAL lines count.
+          err=$(duanyan deploy 2>&1 >/dev/null | grep -E '^[EF][0-9]{8} ' || true)
+          if [[ -n $err ]]; then
+            echo "::error::deploy reported errors:"
+            echo "$err"
+            exit 1
+          fi
+          user="$XDG_CONFIG_HOME/duanyan/rime"
+          if [[ ! -f $user/build/rime_frost.table.bin ]]; then
+            echo "::error::rime_frost was not compiled"
+            ls "$user/build"
+            exit 1
+          fi
+
+          # Typing: `rq` comes from a lua translator, which librime-lua loads
+          # from the shared data dir.
+          out=$(printf 'rq\n{Escape}nihao\n' |
+            DUANYAN_LIBRIME_PATH="$PWD/$FROST/lib/$(basename "$LIB")" \
+            DUANYAN_RIME_SHARED_DIR="$data" \
+            cargo run --quiet --locked --package rime-dl --target ${{ matrix.target }} \
+              --example repl -- "$user")
+          echo "$out"
+          if [[ "$out" != *"$(date +%Y-%m-%d)"* || "$out" != *"1.你好"* ]]; then
+            echo "::error::expected a date for rq and 你好 for nihao"
+            exit 1
+          fi
+
       - name: Upload to release
         if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
           NAME: ${{ steps.package.outputs.name }}
           BUNDLED: ${{ steps.package.outputs.bundled }}
+          FROST: ${{ steps.package.outputs.frost }}
         run: >
           gh release upload "$TAG" --clobber
           "$NAME.tar.gz" "$NAME.tar.gz.sha256"
           "$BUNDLED.tar.gz" "$BUNDLED.tar.gz.sha256"
+          "$FROST.tar.gz" "$FROST.tar.gz.sha256"
 
       - name: Upload as workflow artifacts
         if: env.TAG == ''
