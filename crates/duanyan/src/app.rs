@@ -653,12 +653,13 @@ mod tests {
     use rime_dl::keysym::{mask, sym};
 
     /// A toy engine: letters compose, space commits the input uppercased,
-    /// Shift_L tap toggles ascii mode, Tab is never handled.
+    /// Shift_L tap toggles ascii mode, Tab is never handled. Like librime's
+    /// ascii_composer, only the first modifier pressed counts for a tap.
     #[derive(Default)]
     struct Fake {
         input: String,
         ascii: bool,
-        shift_down: bool,
+        first_modifier: Option<u32>,
         received: Vec<RimeKey>,
     }
 
@@ -666,16 +667,19 @@ mod tests {
         fn process_key(&mut self, key: RimeKey) -> KeyOutcome {
             self.received.push(key);
             let release = key.mask & mask::RELEASE != 0;
-            if key.keycode == sym::SHIFT_L {
-                if !release {
-                    self.shift_down = true;
-                } else if self.shift_down {
-                    self.shift_down = false;
-                    self.ascii = !self.ascii;
+            if matches!(key.keycode, sym::SHIFT_L | sym::CONTROL_L) {
+                if release {
+                    if self.first_modifier.take() == Some(sym::SHIFT_L)
+                        && key.keycode == sym::SHIFT_L
+                    {
+                        self.ascii = !self.ascii;
+                    }
+                } else if self.first_modifier.is_none() {
+                    self.first_modifier = Some(key.keycode);
                 }
                 return KeyOutcome::default();
             }
-            self.shift_down = false;
+            self.first_modifier = None;
             if release || key.mask & mask::CONTROL != 0 {
                 return KeyOutcome::default();
             }
@@ -860,6 +864,30 @@ mod tests {
         a.handle_key(ev(KeyEventKind::Press));
         a.handle_key(ev(KeyEventKind::Release));
         assert!(a.snapshot.ascii_mode);
+    }
+
+    #[test]
+    fn kkp_compat_shift_tap_with_ctrl_held() {
+        let mut a = app();
+        let ev = |code, kind| {
+            KeyEvent::new_with_kind_and_state(
+                code,
+                KeyModifiers::CONTROL,
+                kind,
+                KeyEventState::NONE,
+            )
+        };
+        let ctrl = KeyCode::Modifier(ModifierKeyCode::LeftControl);
+        a.handle_key(ev(ctrl, KeyEventKind::Press));
+        a.handle_key(ev(KeyCode::Char('l'), KeyEventKind::Press));
+        a.handle_key(ev(KeyCode::Char('l'), KeyEventKind::Release));
+        a.handle_key(ev(ctrl, KeyEventKind::Release));
+        assert!(a.snapshot.ascii_mode);
+        assert!(
+            a.engine.received.iter().all(|k| k.keycode != sym::CONTROL_L),
+            "{:?}",
+            a.engine.received
+        );
     }
 
     #[test]

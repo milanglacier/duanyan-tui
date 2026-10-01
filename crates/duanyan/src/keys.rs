@@ -287,9 +287,11 @@ impl fmt::Display for KeySpec {
 }
 
 /// Translates a crossterm event into the key rime expects. Release events
-/// carry the Release mask; repeats are presses. Bare modifier keys (only
-/// reported under KKP) follow X11: the key's own modifier bit is absent on
-/// press and present on release.
+/// carry the Release mask; repeats are presses. Of the bare modifier keys
+/// (only reported under KKP), only Shift is translated: a bare Ctrl press
+/// would stop rime from treating a compat Shift tap such as `ctrl+l` as a
+/// tap. Shift follows X11: its own modifier bit is absent on press and
+/// present on release.
 pub fn to_rime(ev: &KeyEvent) -> Option<RimeKey> {
     let m = ev.modifiers;
     let mut bits = 0;
@@ -342,25 +344,15 @@ pub fn to_rime(ev: &KeyEvent) -> Option<RimeKey> {
         KeyCode::CapsLock => sym::CAPS_LOCK,
         KeyCode::Menu => sym::MENU,
         KeyCode::Modifier(mk) => {
-            let (code, own) = match mk {
-                ModifierKeyCode::LeftShift => (sym::SHIFT_L, mask::SHIFT),
-                ModifierKeyCode::RightShift => (sym::SHIFT_R, mask::SHIFT),
-                ModifierKeyCode::LeftControl => (sym::CONTROL_L, mask::CONTROL),
-                ModifierKeyCode::RightControl => (sym::CONTROL_R, mask::CONTROL),
-                ModifierKeyCode::LeftAlt => (sym::ALT_L, mask::ALT),
-                ModifierKeyCode::RightAlt => (sym::ALT_R, mask::ALT),
-                ModifierKeyCode::LeftSuper => (sym::SUPER_L, mask::SUPER),
-                ModifierKeyCode::RightSuper => (sym::SUPER_R, mask::SUPER),
-                ModifierKeyCode::LeftHyper => (sym::HYPER_L, mask::HYPER),
-                ModifierKeyCode::RightHyper => (sym::HYPER_R, mask::HYPER),
-                ModifierKeyCode::LeftMeta => (sym::META_L, mask::META),
-                ModifierKeyCode::RightMeta => (sym::META_R, mask::META),
+            let code = match mk {
+                ModifierKeyCode::LeftShift => sym::SHIFT_L,
+                ModifierKeyCode::RightShift => sym::SHIFT_R,
                 _ => return None,
             };
             if matches!(ev.kind, KeyEventKind::Release) {
-                bits |= own;
+                bits |= mask::SHIFT;
             } else {
-                bits &= !own;
+                bits &= !mask::SHIFT;
             }
             code
         }
@@ -569,6 +561,11 @@ mod tests {
             r(release),
             RimeKey::new(sym::SHIFT_L, mask::SHIFT | mask::RELEASE)
         );
+        let ctrl = ev(
+            KeyCode::Modifier(ModifierKeyCode::LeftControl),
+            KeyModifiers::CONTROL,
+        );
+        assert_eq!(to_rime(&ctrl), None);
     }
 
     #[test]
