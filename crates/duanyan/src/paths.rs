@@ -128,9 +128,12 @@ pub fn librime_candidates(configured: Option<&Path>, env: &dyn Env) -> Vec<PathB
 pub enum SharedDirSource {
     /// The config file, the environment or a system rime data dir.
     Found,
+    /// The `share/rime-data` shipped next to the binary with a full set of
+    /// schemas, as in the `-bundled-frost` release archives.
+    BundledSchemas,
     /// The `share/rime-data` shipped next to the binary, which only holds
     /// opencc data.
-    Bundled,
+    BundledOpencc,
 }
 
 /// Resolves `shared_data_dir`. `None` means nothing was found; librime then
@@ -144,6 +147,21 @@ pub fn find_shared_data_dir(
     }
     if let Some(p) = env.var("DUANYAN_RIME_SHARED_DIR") {
         return Some((PathBuf::from(p), SharedDirSource::Found));
+    }
+    let bundled = env.exe_dir().and_then(|exe_dir| {
+        let prefix = exe_dir.parent().map(Path::to_owned);
+        std::iter::once(exe_dir)
+            .chain(prefix)
+            .map(|d| d.join("share").join("rime-data"))
+            .find(|p| env.exists(p))
+    });
+    // Bundled schemas come before any system data: the user picked that
+    // archive for its schemas, and a system dir would bring its own
+    // default.yaml.
+    if let Some(p) = &bundled
+        && env.exists(&p.join("default.yaml"))
+    {
+        return Some((p.clone(), SharedDirSource::BundledSchemas));
     }
     let data_dirs = env
         .var("XDG_DATA_DIRS")
@@ -168,13 +186,7 @@ pub fn find_shared_data_dir(
     // The opencc data shipped in the `-bundled` release archives, after any
     // system data. librime looks for opencc configs in the rime data dirs and
     // then only in the data dir compiled into its opencc.
-    let exe_dir = env.exe_dir()?;
-    let prefix = exe_dir.parent().map(Path::to_owned);
-    std::iter::once(exe_dir)
-        .chain(prefix)
-        .map(|d| d.join("share").join("rime-data"))
-        .find(|p| env.exists(p))
-        .map(|p| (p, SharedDirSource::Bundled))
+    bundled.map(|p| (p, SharedDirSource::BundledOpencc))
 }
 
 #[cfg(test)]
@@ -269,7 +281,7 @@ mod tests {
 
     #[test]
     fn shared_dir_bundled() {
-        let bundled = |p: &str| Some((PathBuf::from(p), SharedDirSource::Bundled));
+        let bundled = |p: &str| Some((PathBuf::from(p), SharedDirSource::BundledOpencc));
         let mut env = FakeEnv {
             exe_dir: Some(PathBuf::from("/opt/duanyan")),
             ..Default::default()
@@ -300,6 +312,48 @@ mod tests {
         assert_eq!(
             find_shared_data_dir(None, &env),
             bundled("/opt/share/rime-data")
+        );
+    }
+
+    #[test]
+    fn shared_dir_bundled_schemas() {
+        let schemas = |p: &str| Some((PathBuf::from(p), SharedDirSource::BundledSchemas));
+        let mut env = FakeEnv {
+            exe_dir: Some(PathBuf::from("/opt/duanyan")),
+            ..Default::default()
+        };
+        env.files
+            .insert(PathBuf::from("/opt/duanyan/share/rime-data"));
+        env.files
+            .insert(PathBuf::from("/opt/duanyan/share/rime-data/default.yaml"));
+        env.files.insert(PathBuf::from("/usr/share/rime-data"));
+        // Ahead of a system rime data dir.
+        assert_eq!(
+            find_shared_data_dir(None, &env),
+            schemas("/opt/duanyan/share/rime-data")
+        );
+
+        // The config file and the environment still win.
+        let found = |p: &str| Some((PathBuf::from(p), SharedDirSource::Found));
+        assert_eq!(
+            find_shared_data_dir(Some(Path::new("/cfg")), &env),
+            found("/cfg")
+        );
+        env.vars.insert("DUANYAN_RIME_SHARED_DIR", "/env/rime-data");
+        assert_eq!(find_shared_data_dir(None, &env), found("/env/rime-data"));
+
+        // `<prefix>/bin/duanyan` with `<prefix>/share/rime-data`.
+        let mut env = FakeEnv {
+            exe_dir: Some(PathBuf::from("/opt/bin")),
+            ..Default::default()
+        };
+        env.files.insert(PathBuf::from("/opt/share/rime-data"));
+        env.files
+            .insert(PathBuf::from("/opt/share/rime-data/default.yaml"));
+        env.files.insert(PathBuf::from("/usr/share/rime-data"));
+        assert_eq!(
+            find_shared_data_dir(None, &env),
+            schemas("/opt/share/rime-data")
         );
     }
 }

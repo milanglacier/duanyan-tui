@@ -18,7 +18,7 @@ inline 模式 + shell 集成：
 
 ## 安装
 
-运行需要 librime ≥ 1.8 和 rime 方案数据（如 `rime-data`）。Releases 里的 bundled 包自带 librime，见[预编译二进制](#预编译二进制)。
+运行需要 librime ≥ 1.8 和 rime 方案数据（如 `rime-data`）。Releases 里的 bundled 包自带 librime，bundled-frost 包还自带白霜拼音，下载即用，见[预编译二进制](#预编译二进制)。
 
 librime 和 rime 共享数据目录会自动探测，也可以在 `~/.config/duanyan/config.toml` 里手动指定：
 
@@ -45,32 +45,40 @@ duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
 
 ### 预编译二进制
 
-[Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，Linux 版本要求 glibc ≥ 2.35。每个平台有两种包，以 x86_64 Linux 为例：
+[Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，Linux 版本要求 glibc ≥ 2.35。每个平台有三种包，表中每一种都包含下一行那种的全部内容。以 x86_64 Linux 为例：
 
 | 包 | 内容 |
 | --- | --- |
-| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz` | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled-frost.tar.gz` | **推荐，下载即用。** bundled 包 + [白霜拼音](https://github.com/gaboolic/rime-frost) 1.0.4 |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz` | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime，方案自备 |
 | `duanyan-${VERSION}-x86_64-unknown-linux-gnu.tar.gz` | 只有二进制，需要系统已安装 librime |
 
 文件名由 `duanyan-${VERSION}-${TARGET}` 构成：`VERSION` 是 release tag（如
 `v0.1.3`），发布新版本后请替换为 Releases 上的最新版；`TARGET` 按平台替换即可。
 
-bundled 包解压后应保持目录结构，端砚会使用自身旁边 `lib/` 里的 librime。把 `duanyan` symlink 进 `PATH` 即可：
+bundled 和 bundled-frost 包解压后应保持目录结构，端砚会使用自身旁边 `lib/` 里的 librime 和 `share/` 里的数据。把 `duanyan` symlink 进 `PATH` 即可：
 
 ```sh
 VERSION=v0.1.3  # 替换成 Releases 上的最新版本
-curl -L -O https://github.com/milanglacier/duanyan-tui/releases/download/${VERSION}/duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz
-tar -xzf duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz -C ~/.local/share
-ln -s ~/.local/share/duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled/duanyan ~/.local/bin/duanyan
-rm duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz
+PKG=duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled-frost
+curl -L -O https://github.com/milanglacier/duanyan-tui/releases/download/${VERSION}/${PKG}.tar.gz
+tar -xzf ${PKG}.tar.gz -C ~/.local/share
+ln -s ~/.local/share/${PKG}/duanyan ~/.local/bin/duanyan
+rm ${PKG}.tar.gz
 ```
 
 也可以把 `duanyan` 放进 `~/.local/bin`，把 `lib/`、`share/` 里的文件分别放进 `~/.local/lib`、`~/.local/share`。
 
-bundled 包不包含输入方案数据。想开箱即用、零配置的用户，建议直接使用
-[rime-ice](https://github.com/iDvel/rime-ice) 或
-[rime-frost](https://github.com/gaboolic/rime-frost)。将所选仓库的内容直接放到
-`~/.config/duanyan/rime`，再运行 `duanyan`，首次启动时会自动部署：
+bundled-frost 包解压后直接运行 `duanyan` 即可，首次启动会自动部署（约 20 秒），即使系统里装了其他 rime 数据，也会使用包内的白霜。白霜随端砚升级一起更新，不要把它复制进用户目录；要自定义，在 `~/.config/duanyan/rime` 里放 `*.custom.yaml`，例如只保留全拼：
+
+```yaml
+# ~/.config/duanyan/rime/default.custom.yaml
+patch:
+  schema_list:
+    - schema: rime_frost
+```
+
+想用其他方案（如 [rime-ice](https://github.com/iDvel/rime-ice)），选 bundled 包，将方案仓库的内容直接放到 `~/.config/duanyan/rime`，再运行 `duanyan`，首次启动时会自动部署：
 
 ```sh
 git clone --depth 1 https://github.com/iDvel/rime-ice ~/.config/duanyan/rime
@@ -226,7 +234,7 @@ Control_L = "f9"
 | 配置文件 | `~/.config/duanyan/config.toml` |
 | rime 用户目录 | `~/.config/duanyan/rime` |
 | librime | 自动探测（bundled 包优先用自带的 `lib/`），或 `[rime] librime_path` |
-| rime 共享目录 | 自动探测（`/usr/share/rime-data` 等），或 `[rime] shared_data_dir` |
+| rime 共享目录 | 自动探测（bundled-frost 包优先用自带的 `share/rime-data`，其次 `/usr/share/rime-data` 等），或 `[rime] shared_data_dir` |
 | 历史、日志、实例锁 | `~/.local/state/duanyan/` |
 
 共享目录对 rime 只读，可以与 fcitx5 等其它前端共用；用户目录必须独立。找不到共享目录时，把整套方案放进 `~/.config/duanyan/rime` 即可。
@@ -254,3 +262,5 @@ Control_L = "f9"
 ## 许可证
 
 [GPL-3.0-or-later](LICENSE)
+
+bundled-frost 包附带的[白霜拼音](https://github.com/gaboolic/rime-frost)以 GPL-3.0 发布，许可证和来源见包内的 `licenses/rime-frost/`。

@@ -246,7 +246,8 @@ fn info(setup: &Setup) -> anyhow::Result<ExitCode> {
         setup.shared_data_dir.display(),
         match setup.shared_source {
             Some(paths::SharedDirSource::Found) => "",
-            Some(paths::SharedDirSource::Bundled) => " (bundled opencc data)",
+            Some(paths::SharedDirSource::BundledSchemas) => " (bundled rime data)",
+            Some(paths::SharedDirSource::BundledOpencc) => " (bundled opencc data)",
             None => " (none found; using user_data_dir)",
         }
     );
@@ -468,7 +469,12 @@ fn tui(
             (
                 tr("共享数据目录", "共用資料目錄").into(),
                 match setup.shared_source {
-                    Some(paths::SharedDirSource::Bundled) => format!(
+                    Some(paths::SharedDirSource::BundledSchemas) => format!(
+                        "{}{}",
+                        setup.shared_data_dir.display(),
+                        tr("（包内自带的 rime 方案）", "（套件內附的 rime 方案）")
+                    ),
+                    Some(paths::SharedDirSource::BundledOpencc) => format!(
                         "{}{}",
                         setup.shared_data_dir.display(),
                         tr(

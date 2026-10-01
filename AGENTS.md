@@ -72,6 +72,12 @@ own universal build (version and sha256 are pinned in
 `scripts/build-librime.sh` compiles a self-contained `librime.so.1` on Ubuntu
 22.04. When bumping librime, update the versions in both files.
 
+The `-bundled-frost` archives add rime-frost, pinned by version and sha256 in
+`release.yml`; when bumping it, also update the version in `README.md`. A
+bundled `share/rime-data` with a `default.yaml` is preferred over system rime
+data (`paths.rs`), so the archive works even where fcitx5-rime installed
+`/usr/share/rime-data`.
+
 ## Plans
 
 Design plans live in `.plans/{active,completed}/<name>/plan.md`, with

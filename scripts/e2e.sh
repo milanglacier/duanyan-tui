@@ -490,6 +490,46 @@ EOF
     check "bundled stderr.log is empty" "$(cat "$tmp/bundled/state/duanyan/log/stderr.log" 2>/dev/null)" ""
 fi
 
+step "bundled: schemas next to the binary win over system rime data"
+# The `-bundled-frost` archive layout, with a small schema in place of
+# rime-frost. A system rime data dir, which would bring its own default.yaml,
+# is simulated through XDG_DATA_DIRS. The user dir starts empty.
+sbundle="$tmp/bundle-schemas"
+sdata="$sbundle/share/rime-data"
+mkdir -p "$sdata" "$tmp/schemas/state" "$tmp/system"
+ln -s "$DUANYAN_RIME_SHARED_DIR" "$tmp/system/rime-data"
+cp "$bin" "$sbundle/duanyan"
+for f in key_bindings punctuation symbols; do
+    cp "$DUANYAN_RIME_SHARED_DIR/$f.yaml" "$sdata/"
+done
+printf 'config_version: "0.1"\nschema_list:\n  - schema: e2e_schemas\n' >"$sdata/default.yaml"
+cat >"$sdata/e2e_schemas.schema.yaml" <<'EOF'
+schema:
+  schema_id: e2e_schemas
+  name: 包内方案
+  version: "1"
+engine:
+  processors: [speller, selector, navigator, express_editor]
+  segmentors: [abc_segmentor, fallback_segmentor]
+  translators: [table_translator]
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+translator:
+  dictionary: e2e_schemas
+EOF
+printf -- '---\nname: e2e_schemas\nversion: "1"\n...\n包内词条\tnihao\n世界\tshijie\n' \
+    >"$sdata/e2e_schemas.dict.yaml"
+senv="env -u DUANYAN_RIME_SHARED_DIR XDG_DATA_DIRS=$tmp/system XDG_CONFIG_HOME=$tmp/schemas/config XDG_STATE_HOME=$tmp/schemas/state"
+
+info=$($senv "$sbundle/duanyan" info | grep '^shared_data_dir ')
+check "info shows the bundled schemas" "$info" \
+    "shared_data_dir  $(cd "$sdata" && pwd -P) (bundled rime data)"
+t new-window -d -n schemas "$senv $sbundle/duanyan; sleep 600"
+wait_for e2e:schemas "包内方案" 60 && echo "ok: the bundled default.yaml selects the schema"
+t send-keys -t e2e:schemas -l "nihao"
+wait_for e2e:schemas "包内词条" && echo "ok: the bundled dictionary is used"
+check "bundled schemas stderr.log is empty" "$(cat "$tmp/schemas/state/duanyan/log/stderr.log" 2>/dev/null)" ""
+
 step "nothing leaked to stderr"
 check "stderr.log is empty" "$(cat "$tmp/state/duanyan/log/stderr.log" 2>/dev/null)" ""
 
