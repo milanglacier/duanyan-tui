@@ -50,8 +50,8 @@ duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
 | 包 | 内容 |
 | --- | --- |
 | `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled-frost.tar.gz` | **推荐，下载即用。** bundled 包 + [白霜拼音](https://github.com/gaboolic/rime-frost) 1.0.4 |
-| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz` | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime，方案自备 |
-| `duanyan-${VERSION}-x86_64-unknown-linux-gnu.tar.gz` | 只有二进制，需要系统已安装 librime |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz` | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime，需要自己安装输入方案 |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu.tar.gz` | 只有二进制，需要系统已安装 librime 和输入方案 |
 
 文件名由 `duanyan-${VERSION}-${TARGET}` 构成：`VERSION` 是 release tag（如
 `v0.1.3`），发布新版本后请替换为 Releases 上的最新版；`TARGET` 按平台替换即可。
