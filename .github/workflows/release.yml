@@ -258,7 +258,9 @@ jobs:
           fi
 
           # The first deploy compiles rime-frost; glog copies errors to stderr.
-          err=$(duanyan deploy 2>&1 >/dev/null | grep -v -e '^deploying ' -e '^done$' || true)
+          # On macOS the plugins also log INFO lines there before glog is
+          # initialized, so only ERROR and FATAL lines count.
+          err=$(duanyan deploy 2>&1 >/dev/null | grep -E '^[EF][0-9]{8} ' || true)
           if [[ -n $err ]]; then
             echo "::error::deploy reported errors:"
             echo "$err"
