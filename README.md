@@ -69,14 +69,7 @@ rm ${PKG}.tar.gz
 
 也可以把 `duanyan` 放进 `~/.local/bin`，把 `lib/`、`share/` 里的文件分别放进 `~/.local/lib`、`~/.local/share`。
 
-bundled-frost 包解压后直接运行 `duanyan` 即可，首次启动会自动部署（约 20 秒），即使系统里装了其他 rime 数据，也会使用包内的白霜。白霜随端砚升级一起更新，不要把它复制进用户目录；要自定义，在 `~/.config/duanyan/rime` 里放 `*.custom.yaml`，例如只保留全拼：
-
-```yaml
-# ~/.config/duanyan/rime/default.custom.yaml
-patch:
-  schema_list:
-    - schema: rime_frost
-```
+bundled-frost 包解压后直接运行 `duanyan` 即可，首次启动会自动部署。自定义白霜时，把 `*.custom.yaml` 放进 `~/.config/duanyan/rime`。
 
 想用其他方案（如 [rime-ice](https://github.com/iDvel/rime-ice)），选 bundled 包，将方案仓库的内容直接放到 `~/.config/duanyan/rime`，再运行 `duanyan`，首次启动时会自动部署：
 
