@@ -195,6 +195,28 @@ mode = "dark"                # auto | dark | light
 
 多数终端无法单独发送 Shift 键，默认把 `ctrl+l` / `ctrl+r` 映射为左 / 右 Shift，用来切换中英文；支持 kitty 键盘协议的终端可以直接按 Shift。键位写法为 `[ctrl+][alt+][super+][shift+]<key>`。
 
+<details>
+<summary>终端与 rime 的按键处理差异</summary>
+
+支持 kitty 键盘协议的终端会单独报告 Ctrl、Alt 等修饰键。rime 只在最先按下的修饰键是 Shift 时，才把 Shift 的敲击当作切换中英文。如果把 Ctrl 也发给 rime，按 `ctrl+l` 时 rime 会先看到 Ctrl，模拟的 Shift 就不起作用了。
+
+因此端砚只把单独的 Shift 发给 rime。代价是 rime 配置里 `ascii_composer/switch_key` 的 `Control_L` / `Control_R` 不会生效（默认都是 `noop`）。如果你习惯用 Ctrl 切换中英文，可以改用 Shift：
+
+```yaml
+# ~/.config/duanyan/rime/default.custom.yaml
+patch:
+  ascii_composer/switch_key/Shift_L: commit_code
+```
+
+或者在端砚里绑一个键来模拟 Ctrl 敲击：
+
+```toml
+[keybinding.compat]
+Control_L = "f9"
+```
+
+</details>
+
 全屏模式下，点击输入框里的文字可以移动光标；拖动选中文字，松开即复制到剪贴板，选中后按 Backspace 删除选中的文字。
 
 ## 目录

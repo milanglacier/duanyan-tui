@@ -42,13 +42,12 @@ t kill-server
   `$tmp/config/duanyan/rime` to keep the deploy fast.
 - Poll `capture-pane` until the expected text appears; do not use fixed
   sleeps.
-
-tmux cannot cover everything:
-
-- **Kitty keyboard protocol**: tmux does not forward lone modifier keys, so a
-  bare Shift_L/Shift_R toggling ascii mode can only be verified by hand in
-  kitty (or another KKP terminal) without a multiplexer. herdr has the same
-  limitation (see the plan's `progress.md`).
+- **Kitty keyboard protocol**: tmux does not forward lone modifier keys
+  (herdr has the same limitation). To test them, force
+  `kitty_keyboard = "on"` and write the CSI u sequences a KKP terminal would
+  send with `send-keys -l`, as `scripts/e2e.sh` does. Whether a real terminal
+  sends those sequences can only be checked by hand in kitty (or another KKP
+  terminal) without a multiplexer.
 
 ## Terminal pitfalls
 
@@ -60,6 +59,10 @@ tmux cannot cover everything:
   initialization, and glog copies ERROR logs to stderr, which the TUI
   redirects to `$XDG_STATE_HOME/duanyan/log/stderr.log`. After an e2e run,
   that file should be empty.
+- Under KKP a chord such as `ctrl+l` arrives as separate events: a bare Ctrl
+  press, then `l`. librime's `ascii_composer` counts a Shift tap only when no
+  other modifier went down first, so a Shift tap synthesized for that chord
+  does nothing if rime has already seen the Ctrl press.
 
 ## Bundled librime
 

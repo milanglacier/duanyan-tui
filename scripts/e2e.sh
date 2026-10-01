@@ -191,6 +191,19 @@ printf '[tui]\nlanguage = "simplified"\n' >"$tmp/simplified.toml"
 t new-window -d -n simp "DUANYAN_E2E_LOCALE=zh_TW.UTF-8 $tmp/duanyan --config $tmp/simplified.toml; sleep 600"
 wait_for e2e:simp "已有端砚在运行，不学习新词" && echo "ok: the config overrides the locale"
 t kill-window -t e2e:simp
+
+step "kitty keyboard protocol: compat ctrl+l with a bare Ctrl press, bare Shift tap"
+# tmux does not forward bare modifier keys, so write the CSI u sequences a
+# KKP terminal sends straight into the pane.
+printf '[tui]\nkitty_keyboard = "on"\n' >"$tmp/kkp.toml"
+t new-window -d -n kkp "$tmp/duanyan --config $tmp/kkp.toml; sleep 600"
+wait_for e2e:kkp "朙月拼音·简化字" && wait_for e2e:kkp " 中 "
+t send-keys -t e2e:kkp -l $'\e[57442;5u' $'\e[108;5u' $'\e[108;5:3u' $'\e[57442;1:3u'
+wait_for e2e:kkp " 西 " && echo "ok: ctrl+l toggles ascii mode while Ctrl is reported"
+t send-keys -t e2e:kkp -l $'\e[57441;2u' $'\e[57441;1:3u'
+wait_for e2e:kkp " 中 " && echo "ok: bare Shift tap toggles back"
+t kill-window -t e2e:kkp
+
 check "--help follows the locale" "$(DUANYAN_E2E_LOCALE=zh_TW.UTF-8 "$tmp/duanyan" --help | head -1)" \
     "端硯：基於 rime 的終端機中文輸入草稿板"
 
