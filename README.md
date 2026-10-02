@@ -4,7 +4,7 @@
 APP。在没有系统输入法的环境里（SSH、TTY）用 rime 打字，有四种用法：
 
 - 直接运行 `duanyan`，输入完后回车，文字自动复制到剪贴板；
-- 在 shell prompt 里直接当输入法用：输入 `^^` 再按 Tab 上屏（类似 fzf 的 `**<Tab>`）；
+- 在 shell prompt 里直接当输入法用：输入 `^^` 再按 Tab 上屏（类似 fzf 的 `**<Tab>`，也可定义为其他 shell 快捷键）；
 - 把 `duanyan` 设为 `EDITOR`，coding agent 里用 `ctrl+g` 打开编辑器直接输入中文；
 - 用 `duanyan --stdout` 作为选择器（类 fzf 的交互模式），提交后把文字输出到 stdout。
 
