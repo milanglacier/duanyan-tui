@@ -47,11 +47,11 @@ duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
 
 [Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，Linux 版本要求 glibc ≥ 2.35。每个平台有三种包，表中每一种都包含下一行那种的全部内容。以 x86_64 Linux 为例：
 
-| 包 | 内容 |
-| --- | --- |
-| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled-frost.tar.gz` | **推荐，下载即用。** bundled 包 + [白霜拼音](https://github.com/gaboolic/rime-frost) 1.0.4 |
-| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz` | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime，需要自己安装输入方案 |
-| `duanyan-${VERSION}-x86_64-unknown-linux-gnu.tar.gz` | 只有二进制，需要系统已安装 librime 和输入方案 |
+| 包                                                                 | 内容                                                                                                |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled-frost.tar.gz` | **推荐，下载即用。** bundled 包 + [白霜拼音](https://github.com/gaboolic/rime-frost) 1.0.4          |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu-bundled.tar.gz`       | 二进制 + librime 1.17.0（含 lua、octagram、predict 插件），不需要另装 librime，需要自己安装输入方案 |
+| `duanyan-${VERSION}-x86_64-unknown-linux-gnu.tar.gz`               | 只有二进制，需要系统已安装 librime 和输入方案                                                       |
 
 文件名由 `duanyan-${VERSION}-${TARGET}` 构成：`VERSION` 是 release tag（如
 `v0.1.3`），发布新版本后请替换为 Releases 上的最新版；`TARGET` 按平台替换即可。
@@ -114,17 +114,17 @@ export EDITOR=duanyan    # 或 git config --global core.editor duanyan
 
 Enter 保存并退出，Ctrl+J 换行；Esc 放弃修改并以非零退出码退出（文件改过时需要再按一次），git 会据此中止提交。
 
-| 命令 | 说明 |
-| --- | --- |
-| `duanyan` | 全屏模式 |
-| `duanyan --stdout` | 提交后把文字输出到 stdout |
-| `duanyan <文件>` | 编辑文件，Enter 保存，可作为 `EDITOR` |
-| `duanyan deploy [--full]` | 部署 rime 配置，`--full` 强制重建 |
-| `duanyan sync` | 同步用户词典 |
-| `duanyan info` | 显示实际使用的 librime 与数据目录 |
-| `duanyan init <zsh\|bash\|fish>` | 输出 shell 集成脚本 |
-| `duanyan --print-default-config` | 打印完整默认配置 |
-| `duanyan --config <path>` | 使用指定的配置文件 |
+| 命令                             | 说明                                  |
+| -------------------------------- | ------------------------------------- |
+| `duanyan`                        | 全屏模式                              |
+| `duanyan --stdout`               | 提交后把文字输出到 stdout             |
+| `duanyan <文件>`                 | 编辑文件，Enter 保存，可作为 `EDITOR` |
+| `duanyan deploy [--full]`        | 部署 rime 配置，`--full` 强制重建     |
+| `duanyan sync`                   | 同步用户词典                          |
+| `duanyan info`                   | 显示实际使用的 librime 与数据目录     |
+| `duanyan init <zsh\|bash\|fish>` | 输出 shell 集成脚本                   |
+| `duanyan --print-default-config` | 打印完整默认配置                      |
+| `duanyan --config <path>`        | 使用指定的配置文件                    |
 
 首次运行会在 `~/.config/duanyan/rime` 初始化 rime 用户目录并自动部署，需要等待片刻。
 
@@ -145,25 +145,37 @@ bind -x '"\C-x\C-d": __duanyan_widget'
 ```
 
 <details>
-<summary>自定义</summary>
+<summary>Shell 集成注意事项</summary>
 
-- **修改触发串**：设置 `DUANYAN_TRIGGER`，例如 `DUANYAN_TRIGGER=',,'`。
-- **加载顺序**：没有触发串时，Tab 执行端砚加载前它原来的功能，所以要把端砚放在其它接管 Tab 的插件（fzf、fzf-tab、autopair.fish、fifc 等）之后加载。fish 还要先设好按键模式（例如 `fish_vi_key_bindings`），再加载端砚。
-- **不接管 Tab**：在加载之前把 `DUANYAN_TRIGGER` 设为空串，再自己绑定一个键：
+请将端砚 shell init 命令的激活操作放在 shell 脚本的最后位置。因为当当前 shell
+的提示符不包含触发字符时，Tab 会执行 fallback（回退）命令，所以端
+砚必须放在其他接管 Tab 的插件（如 fzf、fzf-tab、autopair.fish、fifc
+等）之后加载，以保证正确的回退逻辑，避免端砚覆盖原有的 Tab 键绑定。
 
-  ```sh
-  # ~/.zshrc
-  DUANYAN_TRIGGER=''
-  eval "$(duanyan init zsh)"
-  bindkey '^X^D' duanyan-widget
-  ```
+在 fish 中，如果你使用其他按键模式例如 vi，还需要先设置按键模式（例如
+`fish_vi_key_bindings`），再加载端砚。
 
-  ```fish
-  # ~/.config/fish/config.fish
-  set -g DUANYAN_TRIGGER ''
-  duanyan init fish | source
-  bind \cx\cd duanyan_widget
-  ```
+如需将触发字符改为其他字符，请设置 `DUANYAN_TRIGGER`，例如
+`DUANYAN_TRIGGER=',,'`。
+
+若希望端砚**不接管 Tab**，请在加载前将 `DUANYAN_TRIGGER`
+设为空字符串，再自行绑定一个按键：
+
+```sh
+# ~/.zshrc
+# 绑定触发端砚输入法补全到 C-x C-d 而不是 tab
+DUANYAN_TRIGGER=''
+eval "$(duanyan init zsh)"
+bindkey '^X^D' duanyan-widget
+```
+
+```fish
+# 同上
+# ~/.config/fish/config.fish
+set -g DUANYAN_TRIGGER ''
+duanyan init fish | source
+bind \cx\cd duanyan_widget
+```
 
 </details>
 
@@ -173,15 +185,15 @@ bind -x '"\C-x\C-d": __duanyan_widget'
 
 完整默认值和注释见仓库里的 [`default_config.toml`](crates/duanyan/src/default_config.toml)，也可以运行 `duanyan --print-default-config` 查看。
 
-| 配置组 | 作用 |
-| --- | --- |
-| `[general]` | 提交时是否复制到剪贴板 |
-| `[rime]` | librime 路径、rime 数据目录、启动时部署策略 |
-| `[tui]` | 键盘协议、鼠标、候选词排列、界面简繁 |
-| `[theme]` | 深浅色与配色 |
-| `[clipboard]` | 剪贴板后端 |
-| `[history]` | 是否持久化历史、条数上限 |
-| `[keybinding.*]` | 键位绑定 |
+| 配置组           | 作用                                        |
+| ---------------- | ------------------------------------------- |
+| `[general]`      | 提交时是否复制到剪贴板                      |
+| `[rime]`         | librime 路径、rime 数据目录、启动时部署策略 |
+| `[tui]`          | 键盘协议、鼠标、候选词排列、界面简繁        |
+| `[theme]`        | 深浅色与配色                                |
+| `[clipboard]`    | 剪贴板后端                                  |
+| `[history]`      | 是否持久化历史、条数上限                    |
+| `[keybinding.*]` | 键位绑定                                    |
 
 几个例子：
 
@@ -204,18 +216,18 @@ mode = "dark"                # auto | dark | light
 
 所有按键先交给 rime，rime 没有处理的才由端砚处理，因此方案自带的翻页、方案选单等键位照常可用。完整键位见 `default_config.toml` 和 F1 帮助页。
 
-| 键 | 作用 |
-| --- | --- |
-| Enter | 提交（rime 未组字时） |
-| Ctrl+J | 换行 |
-| Ctrl+P / Ctrl+N | 上一行 / 下一行（组字时交给 rime 移动候选） |
-| Alt+B / Alt+F | 前一词 / 后一词 |
-| Alt+< / Alt+> | 文本开头 / 结尾 |
-| Ctrl+Z、Ctrl+/、Ctrl+_ | Undo |
-| Ctrl+Y、Alt+_ | Redo |
-| Tab | 切到历史面板（未组字时） |
-| 历史面板：j/k、y、Enter、d | 移动、复制、取回编辑、删除 |
-| F1 / F5 / F6 / Ctrl+C | 帮助 / 部署 / 同步 / 退出 |
+| 键                         | 作用                                        |
+| -------------------------- | ------------------------------------------- |
+| Enter                      | 提交（rime 未组字时）                       |
+| Ctrl+J                     | 换行                                        |
+| Ctrl+P / Ctrl+N            | 上一行 / 下一行（组字时交给 rime 移动候选） |
+| Alt+B / Alt+F              | 前一词 / 后一词                             |
+| Alt+< / Alt+>              | 文本开头 / 结尾                             |
+| Ctrl+Z、Ctrl+/、Ctrl+\_    | Undo                                        |
+| Ctrl+Y、Alt+\_             | Redo                                        |
+| Tab                        | 切到历史面板（未组字时）                    |
+| 历史面板：j/k、y、Enter、d | 移动、复制、取回编辑、删除                  |
+| F1 / F5 / F6 / Ctrl+C      | 帮助 / 部署 / 同步 / 退出                   |
 
 多数终端无法单独发送 Shift 键，默认把 `ctrl+l` / `ctrl+r` 映射为左 / 右 Shift，用来切换中英文；支持 kitty 键盘协议的终端可以直接按 Shift。键位写法为 `[ctrl+][alt+][super+][shift+]<key>`。
 
@@ -245,13 +257,13 @@ Control_L = "f9"
 
 ## 目录
 
-| 用途 | 默认位置 |
-| --- | --- |
-| 配置文件 | `~/.config/duanyan/config.toml` |
-| rime 用户目录 | `~/.config/duanyan/rime` |
-| librime | 自动探测（bundled 包优先用自带的 `lib/`），或 `[rime] librime_path` |
-| rime 共享目录 | 自动探测（bundled-frost 包优先用自带的 `share/rime-data`，其次 `/usr/share/rime-data` 等），或 `[rime] shared_data_dir` |
-| 历史、日志、实例锁 | `~/.local/state/duanyan/` |
+| 用途               | 默认位置                                                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| 配置文件           | `~/.config/duanyan/config.toml`                                                                                         |
+| rime 用户目录      | `~/.config/duanyan/rime`                                                                                                |
+| librime            | 自动探测（bundled 包优先用自带的 `lib/`），或 `[rime] librime_path`                                                     |
+| rime 共享目录      | 自动探测（bundled-frost 包优先用自带的 `share/rime-data`，其次 `/usr/share/rime-data` 等），或 `[rime] shared_data_dir` |
+| 历史、日志、实例锁 | `~/.local/state/duanyan/`                                                                                               |
 
 共享目录对 rime 只读，可以与 fcitx5 等其它前端共用；用户目录必须独立。找不到共享目录时，把整套方案放进 `~/.config/duanyan/rime` 即可。
 
