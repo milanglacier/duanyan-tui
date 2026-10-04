@@ -297,25 +297,25 @@ step "shell integration: zsh"
 integration_pane zsh "zsh -f"
 wait_for e2e:zsh "%"
 # /etc/zshenv is read even with -f and may reset PATH (NixOS does).
-t send-keys -t e2e:zsh -l "PATH=\"$tmp:\$PATH\"; PS1='zsh> '; eval \"\$(duanyan init zsh)\"; clear"
+t send-keys -t e2e:zsh -l "PATH=\"$tmp:\$PATH\"; PS1='zsh''> '; eval \"\$(duanyan init zsh)\"; clear"
 t send-keys -t e2e:zsh Enter
-wait_for e2e:zsh "zsh> " && integration_checks e2e:zsh "zsh>"
+wait_for e2e:zsh "zsh>" && integration_checks e2e:zsh "zsh>"
 
 step "shell integration: fish"
 integration_pane fish "fish --no-config"
 wait_for e2e:fish ">"
-t send-keys -t e2e:fish -l "function fish_prompt; echo -n 'fish> '; end; duanyan init fish | source; clear"
+t send-keys -t e2e:fish -l "function fish_prompt; echo -n 'fish''> '; end; duanyan init fish | source; clear"
 t send-keys -t e2e:fish Enter
-wait_for e2e:fish "fish> " && integration_checks e2e:fish "fish>"
+wait_for e2e:fish "fish>" && integration_checks e2e:fish "fish>"
 
 # Tab without the trigger runs the binding it had before the script loaded,
 # per keymap, also after loading the script twice.
 step "shell integration: zsh keeps the previous Tab widgets"
 integration_pane zsh-chain "zsh -f"
 wait_for e2e:zsh-chain "%"
-t send-keys -t e2e:zsh-chain -l "PATH=\"$tmp:\$PATH\"; PS1='zsh> '; emark() { LBUFFER+=-emark }; vmark() { LBUFFER+=-vmark }; zle -N emark; zle -N vmark; bindkey -M emacs '^I' emark; bindkey -M viins '^I' vmark; eval \"\$(duanyan init zsh)\"; eval \"\$(duanyan init zsh)\"; clear"
+t send-keys -t e2e:zsh-chain -l "PATH=\"$tmp:\$PATH\"; PS1='zsh''> '; emark() { LBUFFER+=-emark }; vmark() { LBUFFER+=-vmark }; zle -N emark; zle -N vmark; bindkey -M emacs '^I' emark; bindkey -M viins '^I' vmark; eval \"\$(duanyan init zsh)\"; eval \"\$(duanyan init zsh)\"; clear"
 t send-keys -t e2e:zsh-chain Enter
-wait_for e2e:zsh-chain "zsh> "
+wait_for e2e:zsh-chain "zsh>"
 t send-keys -t e2e:zsh-chain -l "echo a"
 t send-keys -t e2e:zsh-chain Tab
 wait_for e2e:zsh-chain "zsh> echo a-emark" && echo "ok: [zsh] Tab runs the previous emacs widget"
@@ -335,9 +335,9 @@ wait_for e2e:zsh-chain "zsh> echo b-vmark" && echo "ok: [zsh] Tab runs the previ
 step "shell integration: fish keeps the previous Tab binding"
 integration_pane fish-chain "fish --no-config"
 wait_for e2e:fish-chain ">"
-t send-keys -t e2e:fish-chain -l "function fish_prompt; echo -n 'fish> '; end; function mark; commandline -i -- -mark; end; function imark; commandline -i -- -imark; end; bind \\t mark end-of-line; bind -M insert \\t imark; duanyan init fish | source; duanyan init fish | source; clear"
+t send-keys -t e2e:fish-chain -l "function fish_prompt; echo -n 'fish''> '; end; function mark; commandline -i -- -mark; end; function imark; commandline -i -- -imark; end; bind \\t mark end-of-line; bind -M insert -m default \\t imark; duanyan init fish | source; duanyan init fish | source; clear"
 t send-keys -t e2e:fish-chain Enter
-wait_for e2e:fish-chain "fish> "
+wait_for e2e:fish-chain "fish>"
 t send-keys -t e2e:fish-chain -l "echo ab"
 t send-keys -t e2e:fish-chain Left Tab
 t send-keys -t e2e:fish-chain -l "!"
@@ -351,18 +351,21 @@ wait_for e2e:fish-chain "fish> echo ^^"
 t send-keys -t e2e:fish-chain C-u
 t send-keys -t e2e:fish-chain -l "fish_vi_key_bindings"
 t send-keys -t e2e:fish-chain Enter
-t send-keys -t e2e:fish-chain -l "echo c"
-t send-keys -t e2e:fish-chain Tab
-wait_for e2e:fish-chain "fish> echo c-imark" && echo "ok: [fish] Tab runs the previous insert-mode binding"
+t send-keys -t e2e:fish-chain -l "echo cd"
+t send-keys -t e2e:fish-chain Left Tab
+# In normal mode, x deletes the d and A appends; in insert mode both would be
+# inserted.
+t send-keys -t e2e:fish-chain -l "xA!"
+wait_for e2e:fish-chain "fish> echo c-imark!" && echo "ok: [fish] Tab runs the previous insert-mode binding and its mode switch"
 
 # An empty DUANYAN_TRIGGER set before loading leaves Tab alone; the widget
 # bound to another key still inserts text.
 step "shell integration: empty trigger leaves Tab alone"
 integration_pane zsh-notab "zsh -f"
 wait_for e2e:zsh-notab "%"
-t send-keys -t e2e:zsh-notab -l "PATH=\"$tmp:\$PATH\"; PS1='zsh> '; DUANYAN_TRIGGER=''; eval \"\$(duanyan init zsh)\"; bindkey '^X^D' duanyan-widget; clear"
+t send-keys -t e2e:zsh-notab -l "PATH=\"$tmp:\$PATH\"; PS1='zsh''> '; DUANYAN_TRIGGER=''; eval \"\$(duanyan init zsh)\"; bindkey '^X^D' duanyan-widget; clear"
 t send-keys -t e2e:zsh-notab Enter
-wait_for e2e:zsh-notab "zsh> "
+wait_for e2e:zsh-notab "zsh>"
 t send-keys -t e2e:zsh-notab -l "bindkey -M emacs '^I' | grep -q __duanyan_tab || echo tab-un''touched"
 t send-keys -t e2e:zsh-notab Enter
 wait_for e2e:zsh-notab $'\ntab-untouched' && echo "ok: [zsh] Tab not bound"
@@ -375,9 +378,9 @@ wait_for e2e:zsh-notab "zsh> echo 你好" && echo "ok: [zsh] duanyan-widget boun
 
 integration_pane fish-notab "fish --no-config"
 wait_for e2e:fish-notab ">"
-t send-keys -t e2e:fish-notab -l "function fish_prompt; echo -n 'fish> '; end; set -g DUANYAN_TRIGGER ''; duanyan init fish | source; bind \\cx\\cd duanyan_widget; clear"
+t send-keys -t e2e:fish-notab -l "function fish_prompt; echo -n 'fish''> '; end; set -g DUANYAN_TRIGGER ''; duanyan init fish | source; bind \\cx\\cd duanyan_widget; clear"
 t send-keys -t e2e:fish-notab Enter
-wait_for e2e:fish-notab "fish> "
+wait_for e2e:fish-notab "fish>"
 t send-keys -t e2e:fish-notab -l "bind \\t | string match -q '*__duanyan_tab*'; or echo tab-un''touched"
 t send-keys -t e2e:fish-notab Enter
 wait_for e2e:fish-notab $'\ntab-untouched' && echo "ok: [fish] Tab not bound"
@@ -391,9 +394,9 @@ wait_for e2e:fish-notab "fish> echo 你好" && echo "ok: [fish] duanyan_widget b
 step "shell integration: bash widget"
 integration_pane bash "bash --norc --noprofile"
 wait_for e2e:bash "$"
-t send-keys -t e2e:bash -l "PS1='bash> '; eval \"\$(duanyan init bash)\"; bind -x '\"\\C-x\\C-d\": __duanyan_widget'; clear"
+t send-keys -t e2e:bash -l "PS1='bash''> '; eval \"\$(duanyan init bash)\"; bind -x '\"\\C-x\\C-d\": __duanyan_widget'; clear"
 t send-keys -t e2e:bash Enter
-wait_for e2e:bash "bash> "
+wait_for e2e:bash "bash>"
 t send-keys -t e2e:bash -l "echo 中文ab"
 t send-keys -t e2e:bash Left Left C-x C-d
 wait_for e2e:bash "输出"
