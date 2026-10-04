@@ -4,9 +4,9 @@
 # Typing the trigger ($DUANYAN_TRIGGER, default ^^) and pressing Tab opens
 # duanyan; the submitted text replaces the trigger. Without the trigger, Tab
 # runs what it was bound to when this script was loaded, so load it after
-# other plugins that bind Tab and after setting fish_key_bindings. Setting
-# DUANYAN_TRIGGER to '' before loading leaves Tab alone. duanyan_widget
-# inserts text at the cursor and can be bound to any key.
+# other plugins that bind Tab. Setting DUANYAN_TRIGGER to '' before loading
+# leaves Tab alone. duanyan_widget inserts text at the cursor and can be bound
+# to any key.
 
 # Runs duanyan and replaces the $argv[1] characters before the cursor with
 # the submitted text.
@@ -40,6 +40,7 @@ function __duanyan_tab
         return
     end
     set -l fallback __duanyan_tab_fallback_$fish_bind_mode
+    set -l sets_mode __duanyan_tab_sets_mode_$fish_bind_mode
     if not set -q $fallback
         commandline -f complete
         return
@@ -54,9 +55,18 @@ function __duanyan_tab
             eval $cmd
         end
     end
+    # bind -m switches the mode after the commands have run.
+    if test -n "$$sets_mode"
+        set -g fish_bind_mode $$sets_mode
+    end
 end
 
 if not set -q DUANYAN_TRIGGER; or test -n "$DUANYAN_TRIGGER"
+    # Plugins such as autopair.fish rebind Tab whenever fish_key_bindings
+    # changes. fish gives it a value only after config.fish, which would
+    # override the binding below, so set the same default now: they bind Tab
+    # first and it is saved as the fallback.
+    set -q fish_key_bindings[1]; or set -g fish_key_bindings fish_default_key_bindings
     for mode in default insert
         # Preset bindings print before user ones; the last line wins. The key
         # prints as `tab` in fish 4 and `\t` in fish 3, and the remaining
@@ -65,6 +75,7 @@ if not set -q DUANYAN_TRIGGER; or test -n "$DUANYAN_TRIGGER"
         set -l cmds (string replace -rf -- '^bind (--preset )?(-M \S+ )?(-m \S+ )?(tab|\\\\t) ' '' $line)
         if test -n "$cmds" -a "$cmds" != __duanyan_tab
             eval "set -g __duanyan_tab_fallback_$mode $cmds"
+            set -g __duanyan_tab_sets_mode_$mode (string match -rg -- '^bind (?:--preset )?(?:-M \S+ )?-m (\S+) ' $line)
         end
         bind -M $mode \t __duanyan_tab
     end

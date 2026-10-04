@@ -335,7 +335,7 @@ wait_for e2e:zsh-chain "zsh> echo b-vmark" && echo "ok: [zsh] Tab runs the previ
 step "shell integration: fish keeps the previous Tab binding"
 integration_pane fish-chain "fish --no-config"
 wait_for e2e:fish-chain ">"
-t send-keys -t e2e:fish-chain -l "function fish_prompt; echo -n 'fish> '; end; function mark; commandline -i -- -mark; end; function imark; commandline -i -- -imark; end; bind \\t mark end-of-line; bind -M insert \\t imark; duanyan init fish | source; duanyan init fish | source; clear"
+t send-keys -t e2e:fish-chain -l "function fish_prompt; echo -n 'fish> '; end; function mark; commandline -i -- -mark; end; function imark; commandline -i -- -imark; end; bind \\t mark end-of-line; bind -M insert -m default \\t imark; duanyan init fish | source; duanyan init fish | source; clear"
 t send-keys -t e2e:fish-chain Enter
 wait_for e2e:fish-chain "fish> "
 t send-keys -t e2e:fish-chain -l "echo ab"
@@ -351,9 +351,12 @@ wait_for e2e:fish-chain "fish> echo ^^"
 t send-keys -t e2e:fish-chain C-u
 t send-keys -t e2e:fish-chain -l "fish_vi_key_bindings"
 t send-keys -t e2e:fish-chain Enter
-t send-keys -t e2e:fish-chain -l "echo c"
-t send-keys -t e2e:fish-chain Tab
-wait_for e2e:fish-chain "fish> echo c-imark" && echo "ok: [fish] Tab runs the previous insert-mode binding"
+t send-keys -t e2e:fish-chain -l "echo cd"
+t send-keys -t e2e:fish-chain Left Tab
+# In normal mode, x deletes the d and A appends; in insert mode both would be
+# inserted.
+t send-keys -t e2e:fish-chain -l "xA!"
+wait_for e2e:fish-chain "fish> echo c-imark!" && echo "ok: [fish] Tab runs the previous insert-mode binding and its mode switch"
 
 # An empty DUANYAN_TRIGGER set before loading leaves Tab alone; the widget
 # bound to another key still inserts text.

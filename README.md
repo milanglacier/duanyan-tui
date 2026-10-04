@@ -153,8 +153,8 @@ fallback（回退）命令，所以端砚必须放在其他接管 Tab 的插件�
 fzf、fzf-tab、autopair.fish、fifc
 等）之后加载，以保证正确的回退逻辑，避免端砚覆盖原有的 Tab 键绑定。
 
-在 fish 中，如果你使用其他按键模式例如 vi，还需要先设置按键模式（例如
-`fish_vi_key_bindings`），再加载端砚。
+fish 用户如果同时使用 autopair.fish，请参阅
+[fish 与 autopair.fish 的冲突](https://github.com/milanglacier/duanyan-tui/wiki/Fish-autopair-conflict)。
 
 如需将触发字符改为其他字符，请设置 `DUANYAN_TRIGGER`，例如
 `DUANYAN_TRIGGER=',,'`。
