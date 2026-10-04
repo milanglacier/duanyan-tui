@@ -297,9 +297,9 @@ step "shell integration: zsh"
 integration_pane zsh "zsh -f"
 wait_for e2e:zsh "%"
 # /etc/zshenv is read even with -f and may reset PATH (NixOS does).
-t send-keys -t e2e:zsh -l "PATH=\"$tmp:\$PATH\"; PS1='zsh> '; eval \"\$(duanyan init zsh)\"; clear"
+t send-keys -t e2e:zsh -l "PATH=\"$tmp:\$PATH\"; PS1='zsh''> '; eval \"\$(duanyan init zsh)\"; clear"
 t send-keys -t e2e:zsh Enter
-wait_for e2e:zsh "zsh> " && integration_checks e2e:zsh "zsh>"
+wait_for e2e:zsh "zsh>" && integration_checks e2e:zsh "zsh>"
 
 step "shell integration: fish"
 integration_pane fish "fish --no-config"
@@ -313,9 +313,9 @@ wait_for e2e:fish "fish>" && integration_checks e2e:fish "fish>"
 step "shell integration: zsh keeps the previous Tab widgets"
 integration_pane zsh-chain "zsh -f"
 wait_for e2e:zsh-chain "%"
-t send-keys -t e2e:zsh-chain -l "PATH=\"$tmp:\$PATH\"; PS1='zsh> '; emark() { LBUFFER+=-emark }; vmark() { LBUFFER+=-vmark }; zle -N emark; zle -N vmark; bindkey -M emacs '^I' emark; bindkey -M viins '^I' vmark; eval \"\$(duanyan init zsh)\"; eval \"\$(duanyan init zsh)\"; clear"
+t send-keys -t e2e:zsh-chain -l "PATH=\"$tmp:\$PATH\"; PS1='zsh''> '; emark() { LBUFFER+=-emark }; vmark() { LBUFFER+=-vmark }; zle -N emark; zle -N vmark; bindkey -M emacs '^I' emark; bindkey -M viins '^I' vmark; eval \"\$(duanyan init zsh)\"; eval \"\$(duanyan init zsh)\"; clear"
 t send-keys -t e2e:zsh-chain Enter
-wait_for e2e:zsh-chain "zsh> "
+wait_for e2e:zsh-chain "zsh>"
 t send-keys -t e2e:zsh-chain -l "echo a"
 t send-keys -t e2e:zsh-chain Tab
 wait_for e2e:zsh-chain "zsh> echo a-emark" && echo "ok: [zsh] Tab runs the previous emacs widget"
@@ -363,9 +363,9 @@ wait_for e2e:fish-chain "fish> echo c-imark!" && echo "ok: [fish] Tab runs the p
 step "shell integration: empty trigger leaves Tab alone"
 integration_pane zsh-notab "zsh -f"
 wait_for e2e:zsh-notab "%"
-t send-keys -t e2e:zsh-notab -l "PATH=\"$tmp:\$PATH\"; PS1='zsh> '; DUANYAN_TRIGGER=''; eval \"\$(duanyan init zsh)\"; bindkey '^X^D' duanyan-widget; clear"
+t send-keys -t e2e:zsh-notab -l "PATH=\"$tmp:\$PATH\"; PS1='zsh''> '; DUANYAN_TRIGGER=''; eval \"\$(duanyan init zsh)\"; bindkey '^X^D' duanyan-widget; clear"
 t send-keys -t e2e:zsh-notab Enter
-wait_for e2e:zsh-notab "zsh> "
+wait_for e2e:zsh-notab "zsh>"
 t send-keys -t e2e:zsh-notab -l "bindkey -M emacs '^I' | grep -q __duanyan_tab || echo tab-un''touched"
 t send-keys -t e2e:zsh-notab Enter
 wait_for e2e:zsh-notab $'\ntab-untouched' && echo "ok: [zsh] Tab not bound"
@@ -394,9 +394,9 @@ wait_for e2e:fish-notab "fish> echo 你好" && echo "ok: [fish] duanyan_widget b
 step "shell integration: bash widget"
 integration_pane bash "bash --norc --noprofile"
 wait_for e2e:bash "$"
-t send-keys -t e2e:bash -l "PS1='bash> '; eval \"\$(duanyan init bash)\"; bind -x '\"\\C-x\\C-d\": __duanyan_widget'; clear"
+t send-keys -t e2e:bash -l "PS1='bash''> '; eval \"\$(duanyan init bash)\"; bind -x '\"\\C-x\\C-d\": __duanyan_widget'; clear"
 t send-keys -t e2e:bash Enter
-wait_for e2e:bash "bash> "
+wait_for e2e:bash "bash>"
 t send-keys -t e2e:bash -l "echo 中文ab"
 t send-keys -t e2e:bash Left Left C-x C-d
 wait_for e2e:bash "输出"
