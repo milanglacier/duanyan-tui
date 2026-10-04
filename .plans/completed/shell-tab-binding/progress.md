@@ -10,8 +10,7 @@
   widget，`$KEYMAP` 为 `main` 时用 `bindkey -lL main` 解析出实际 keymap。
 - fish：加载前 `DUANYAN_TRIGGER=''` 时不绑 Tab；default 和 insert 分别记录原绑定，
   转回时输入函数用 `commandline -f`，其它用 `eval`；原绑定带 `-m` 时另存目标模式，
-  命令跑完后设置 `fish_bind_mode`。`fish_key_bindings` 没有值时先设为
-  `fish_default_key_bindings`。
+  命令跑完后设置 `fish_bind_mode`。
 - README「Shell 集成」保持简短，细节放进 `<details>`；autopair.fish 的处理写在
   wiki 的 Fish-autopair-conflict 页，README 只放链接。
 
@@ -26,11 +25,13 @@
 - 计划 3.3 认为只有 vi 用户需要先设按键模式，实际上与 autopair.fish 同用时 emacs
   用户也会被盖掉：autopair 在 `conf.d` 里只在 `fish_key_bindings` 有值时才绑 Tab，
   并在它变化时重新绑；fish 到 `config.fish` 之后才给它赋默认值（fish 4 每次启动都
-  设为 global，fish 3 首次启动设为 universal），触发 autopair 盖掉端砚。端砚加载时
-  先设好同样的默认值，默认按键模式就无需用户处理。vi 模式仍需在加载前
-  `set -g fish_key_bindings fish_vi_key_bindings`；在 fish 4 中直接调用
-  `fish_vi_key_bindings` 会让 autopair 的 Tab 绑定在端砚加载前丢失。README 里不再
-  提按键模式。
+  设为 global，fish 3 首次启动设为 universal），触发 autopair 盖掉端砚。所以与
+  autopair 同用时，不论哪种按键模式，都要在加载端砚前用 `set -g` 设好
+  `fish_key_bindings`；在 fish 4 中直接调用 `fish_vi_key_bindings` 会让 autopair 的
+  Tab 绑定在端砚加载前丢失。README 里不再提按键模式，只链接到 wiki。
+- 曾让脚本在 `fish_key_bindings` 没有值时自己设为 `fish_default_key_bindings`，免得
+  默认按键模式的用户手动设置。这等于替用户改 fish 的配置，还依赖 fish 初始化的时
+  机，最后去掉了，交给 wiki 说明。
 - 用户在 `fish_user_key_bindings` 里绑 Tab 时，它在 `config.fish` 之后执行，总会
   盖掉端砚。这种用法少见，不处理也不写进 README。
 
@@ -47,6 +48,6 @@
 - 手动：fish 3.7.1（nixos-24.05）下转回原绑定、vi 模式均正常，记录的列表正确。
 - 手动：fish 3.7.1 和 4.9.3 下，`-m` 的模式切换与原生绑定一致；混合绑定
   `backward-char m`、`beginning-of-line m`、`kill-line m` 等在 fish 4 下与原生一致。
-- 手动：fish 3.7.1 和 4.9.3 下装 nixpkgs 的 autopair.fish，默认按键模式什么都不设、
-  `set -g` 设 vi 后加载、universal 变量已设时，Tab 都是端砚，转回 `_autopair_tab`；
-  加载后再设 vi 时会被盖掉，符合 wiki 的说明。
+- 手动：fish 3.7.1 和 4.9.3 下装 nixpkgs 的 autopair.fish：加载前 `set -g` 设好
+  默认或 vi 按键模式、universal 变量已设时，Tab 都是端砚，转回 `_autopair_tab`；
+  什么都不设，或加载后才设时会被盖掉，符合 wiki 的说明。

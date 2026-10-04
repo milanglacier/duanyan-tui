@@ -62,11 +62,6 @@ function __duanyan_tab
 end
 
 if not set -q DUANYAN_TRIGGER; or test -n "$DUANYAN_TRIGGER"
-    # Plugins such as autopair.fish rebind Tab whenever fish_key_bindings
-    # changes. fish gives it a value only after config.fish, which would
-    # override the binding below, so set the same default now: they bind Tab
-    # first and it is saved as the fallback.
-    set -q fish_key_bindings[1]; or set -g fish_key_bindings fish_default_key_bindings
     for mode in default insert
         # Preset bindings print before user ones; the last line wins. The key
         # prints as `tab` in fish 4 and `\t` in fish 3, and the remaining
