@@ -137,12 +137,35 @@ eval "$(duanyan init zsh)"    # ~/.zshrc
 duanyan init fish | source    # ~/.config/fish/config.fish
 ```
 
-触发串可以用 `DUANYAN_TRIGGER` 修改。bash 不接管 Tab，需要自己绑定一个键：
+bash 不接管 Tab，需要自己绑定一个键：
 
 ```bash
 eval "$(duanyan init bash)"
 bind -x '"\C-x\C-d": __duanyan_widget'
 ```
+
+<details>
+<summary>自定义</summary>
+
+- **修改触发串**：设置 `DUANYAN_TRIGGER`，例如 `DUANYAN_TRIGGER=',,'`。
+- **加载顺序**：没有触发串时，Tab 执行端砚加载前它原来的功能，所以要把端砚放在其它接管 Tab 的插件（fzf、fzf-tab、autopair.fish、fifc 等）之后加载。fish 还要先设好按键模式（例如 `fish_vi_key_bindings`），再加载端砚。
+- **不接管 Tab**：在加载之前把 `DUANYAN_TRIGGER` 设为空串，再自己绑定一个键：
+
+  ```sh
+  # ~/.zshrc
+  DUANYAN_TRIGGER=''
+  eval "$(duanyan init zsh)"
+  bindkey '^X^D' duanyan-widget
+  ```
+
+  ```fish
+  # ~/.config/fish/config.fish
+  set -g DUANYAN_TRIGGER ''
+  duanyan init fish | source
+  bind \cx\cd duanyan_widget
+  ```
+
+</details>
 
 ## 配置
 
