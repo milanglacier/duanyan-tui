@@ -147,9 +147,10 @@ bind -x '"\C-x\C-d": __duanyan_widget'
 <details>
 <summary>Shell 集成注意事项</summary>
 
-请将端砚 shell init 命令的激活操作放在 shell 脚本的最后位置。因为当当前 shell
-的提示符不包含触发字符时，Tab 会执行 fallback（回退）命令，所以端
-砚必须放在其他接管 Tab 的插件（如 fzf、fzf-tab、autopair.fish、fifc
+请将端砚 shell init 命令的激活操作放在 shell 配置文件的最后位置。因为在当前 shell
+的提示符不包含触发字符时，Tab 会执行
+fallback（回退）命令，所以端砚必须放在其他接管 Tab 的插件（如
+fzf、fzf-tab、autopair.fish、fifc
 等）之后加载，以保证正确的回退逻辑，避免端砚覆盖原有的 Tab 键绑定。
 
 在 fish 中，如果你使用其他按键模式例如 vi，还需要先设置按键模式（例如
