@@ -304,9 +304,9 @@ wait_for e2e:zsh "zsh> " && integration_checks e2e:zsh "zsh>"
 step "shell integration: fish"
 integration_pane fish "fish --no-config"
 wait_for e2e:fish ">"
-t send-keys -t e2e:fish -l "function fish_prompt; echo -n 'fish> '; end; duanyan init fish | source; clear"
+t send-keys -t e2e:fish -l "function fish_prompt; echo -n 'fish''> '; end; duanyan init fish | source; clear"
 t send-keys -t e2e:fish Enter
-wait_for e2e:fish "fish> " && integration_checks e2e:fish "fish>"
+wait_for e2e:fish "fish>" && integration_checks e2e:fish "fish>"
 
 # Tab without the trigger runs the binding it had before the script loaded,
 # per keymap, also after loading the script twice.
@@ -335,9 +335,9 @@ wait_for e2e:zsh-chain "zsh> echo b-vmark" && echo "ok: [zsh] Tab runs the previ
 step "shell integration: fish keeps the previous Tab binding"
 integration_pane fish-chain "fish --no-config"
 wait_for e2e:fish-chain ">"
-t send-keys -t e2e:fish-chain -l "function fish_prompt; echo -n 'fish> '; end; function mark; commandline -i -- -mark; end; function imark; commandline -i -- -imark; end; bind \\t mark end-of-line; bind -M insert -m default \\t imark; duanyan init fish | source; duanyan init fish | source; clear"
+t send-keys -t e2e:fish-chain -l "function fish_prompt; echo -n 'fish''> '; end; function mark; commandline -i -- -mark; end; function imark; commandline -i -- -imark; end; bind \\t mark end-of-line; bind -M insert -m default \\t imark; duanyan init fish | source; duanyan init fish | source; clear"
 t send-keys -t e2e:fish-chain Enter
-wait_for e2e:fish-chain "fish> "
+wait_for e2e:fish-chain "fish>"
 t send-keys -t e2e:fish-chain -l "echo ab"
 t send-keys -t e2e:fish-chain Left Tab
 t send-keys -t e2e:fish-chain -l "!"
@@ -378,9 +378,9 @@ wait_for e2e:zsh-notab "zsh> echo 你好" && echo "ok: [zsh] duanyan-widget boun
 
 integration_pane fish-notab "fish --no-config"
 wait_for e2e:fish-notab ">"
-t send-keys -t e2e:fish-notab -l "function fish_prompt; echo -n 'fish> '; end; set -g DUANYAN_TRIGGER ''; duanyan init fish | source; bind \\cx\\cd duanyan_widget; clear"
+t send-keys -t e2e:fish-notab -l "function fish_prompt; echo -n 'fish''> '; end; set -g DUANYAN_TRIGGER ''; duanyan init fish | source; bind \\cx\\cd duanyan_widget; clear"
 t send-keys -t e2e:fish-notab Enter
-wait_for e2e:fish-notab "fish> "
+wait_for e2e:fish-notab "fish>"
 t send-keys -t e2e:fish-notab -l "bind \\t | string match -q '*__duanyan_tab*'; or echo tab-un''touched"
 t send-keys -t e2e:fish-notab Enter
 wait_for e2e:fish-notab $'\ntab-untouched' && echo "ok: [fish] Tab not bound"
