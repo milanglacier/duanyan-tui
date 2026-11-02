@@ -1,11 +1,12 @@
 # 端砚 Duanyan
 
 基于 [librime](https://github.com/rime/librime) 的终端中文输入法
-APP。在没有系统输入法的环境里（SSH、TTY）用 rime 打字，有四种用法：
+APP。在没有系统输入法的环境里（SSH、TTY）用 rime 打字，有五种用法：
 
 - 直接运行 `duanyan`，输入完后回车，文字自动复制到剪贴板；
 - 在 shell prompt 里直接当输入法用：输入 `^^` 再按 Tab 上屏（类似 fzf 的 `**<Tab>`，也可定义为其他 shell 快捷键）；
 - 把 `duanyan` 设为 `EDITOR`，coding agent 里用 `ctrl+g` 打开编辑器直接输入中文；
+- 在 tmux、zellij、herdr 里按快捷键，在光标旁弹出小窗输入，文字直接写进原来的窗格；
 - 用 `duanyan --stdout` 作为选择器（类 fzf 的交互模式），提交后把文字输出到 stdout。
 
 inline 模式 + shell 集成：
@@ -114,17 +115,18 @@ export EDITOR=duanyan    # 或 git config --global core.editor duanyan
 
 Enter 保存并退出，Ctrl+J 换行；Esc 放弃修改并以非零退出码退出（文件改过时需要再按一次），git 会据此中止提交。
 
-| 命令                             | 说明                                  |
-| -------------------------------- | ------------------------------------- |
-| `duanyan`                        | 全屏模式                              |
-| `duanyan --stdout`               | 提交后把文字输出到 stdout             |
-| `duanyan <文件>`                 | 编辑文件，Enter 保存，可作为 `EDITOR` |
-| `duanyan deploy [--full]`        | 部署 rime 配置，`--full` 强制重建     |
-| `duanyan sync`                   | 同步用户词典                          |
-| `duanyan info`                   | 显示实际使用的 librime 与数据目录     |
-| `duanyan init <zsh\|bash\|fish>` | 输出 shell 集成脚本                   |
-| `duanyan --print-default-config` | 打印完整默认配置                      |
-| `duanyan --config <path>`        | 使用指定的配置文件                    |
+| 命令                                  | 说明                                    |
+| ------------------------------------- | --------------------------------------- |
+| `duanyan`                             | 全屏模式                                |
+| `duanyan --stdout`                    | 提交后把文字输出到 stdout               |
+| `duanyan <文件>`                      | 编辑文件，Enter 保存，可作为 `EDITOR`   |
+| `duanyan deploy [--full]`             | 部署 rime 配置，`--full` 强制重建       |
+| `duanyan sync`                        | 同步用户词典                            |
+| `duanyan info`                        | 显示实际使用的 librime 与数据目录       |
+| `duanyan init <zsh\|bash\|fish>`      | 输出 shell 集成脚本                     |
+| `duanyan popup <tmux\|zellij\|herdr>` | 在 multiplexer 的弹窗里输入，写进原窗格 |
+| `duanyan --print-default-config`      | 打印完整默认配置                        |
+| `duanyan --config <path>`             | 使用指定的配置文件                      |
 
 首次运行会在 `~/.config/duanyan/rime` 初始化 rime 用户目录并自动部署，需要等待片刻。
 
@@ -177,6 +179,64 @@ set -g DUANYAN_TRIGGER ''
 duanyan init fish | source
 bind \cx\cd duanyan_widget
 ```
+
+</details>
+
+### tmux / zellij / herdr 弹窗
+
+在 multiplexer 里绑一个快捷键：按下后在当前窗格的光标旁弹出一个小窗，输入完按
+Enter，文字直接写进原来的窗格；Esc 取消。下面的快捷键只是示例，可以换成任何不冲突的键。
+
+tmux（`~/.tmux.conf`）：
+
+```tmux
+bind-key -n M-i run-shell -b 'duanyan popup tmux "#{pane_id}" "#{client_name}"'
+```
+
+zellij（`config.kdl`，需要安装 [jq](https://jqlang.org)）：
+
+```kdl
+keybinds {
+    shared_except "locked" {
+        bind "Alt i" {
+            Run "duanyan" "popup" "zellij" {
+                floating true
+                close_on_exit true
+                borderless true
+                width 60
+                height 5
+            }
+        }
+    }
+}
+```
+
+herdr（`config.toml`）：
+
+```toml
+[[keys.command]]
+key = "prefix+alt+i"
+type = "popup"
+command = "duanyan popup herdr"
+width = 62    # 含边框
+height = 7
+```
+
+<details>
+<summary>弹窗注意事项</summary>
+
+- 弹窗默认 60 列宽、5 行高。在 tmux 和 zellij 里可以用环境变量
+  `DUANYAN_POPUP_WIDTH`、`DUANYAN_POPUP_HEIGHT` 调整（tmux 里用
+  `set-environment -g` 设置）。竖排候选需要把高度设为 `3 + 每页候选数 + 1`。
+  zellij 的 `width`、`height` 是浮窗打开时的大小，与这两个变量保持一致可以减少弹窗
+  移动时的闪烁。
+- herdr 的弹窗总是居中，大小由 herdr 配置里的 `width`、`height` 决定。
+- 文字以粘贴（bracketed paste）的方式写入，多行文字不会被当成命令执行。zellij 和
+  herdr 无法得知程序是否支持 bracketed paste，总是按粘贴写入，不支持的程序会看到
+  `^[[200~` 这样的字符。
+- 程序隐藏了光标时（例如 Claude Code、Codex 这类自己画光标的 TUI），弹窗出现在
+  窗格的左下角。
+- zellij 里从另一个浮窗按快捷键时，文字会写进当前 tab 里有焦点的平铺窗格。
 
 </details>
 

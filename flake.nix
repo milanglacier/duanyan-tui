@@ -94,6 +94,9 @@
             fish
             bashInteractive
             git # scripts/e2e.sh: duanyan as GIT_EDITOR
+            zellij # scripts/e2e.sh: popups
+            herdr
+            jq
           ];
           DUANYAN_LIBRIME_PATH = librimeFile pkgs;
           DUANYAN_RIME_SHARED_DIR = "${pkgs.rime-data}/share/rime-data";

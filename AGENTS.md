@@ -3,9 +3,10 @@
 ## Build and test
 
 Run everything inside the devShell, which provides the Rust toolchain,
-librime, rime-data, tmux and the shells for the integration tests
-(zsh, fish, bash), and exports `DUANYAN_LIBRIME_PATH`,
-`DUANYAN_RIME_SHARED_DIR` and `RIME_INCLUDE_DIR`:
+librime, rime-data, tmux, the shells for the integration tests
+(zsh, fish, bash) and zellij, herdr and jq for the popup tests, and
+exports `DUANYAN_LIBRIME_PATH`, `DUANYAN_RIME_SHARED_DIR` and
+`RIME_INCLUDE_DIR`:
 
 ```sh
 nix develop -c cargo test             # unit, FFI layout and librime integration tests
@@ -48,6 +49,13 @@ t kill-server
   send with `send-keys -l`, as `scripts/e2e.sh` does. Whether a real terminal
   sends those sequences can only be checked by hand in kitty (or another KKP
   terminal) without a multiplexer.
+- **Nested herdr** (e.g. when the agent itself runs in herdr): unset every
+  `HERDR_*` variable, or `herdr server stop` and friends reach the agent's
+  own herdr. Also use a temporary `HOME` and `onboarding = false`: an Enter
+  that lands in the onboarding's integrations dialog installs agent hooks
+  under the real `HOME`.
+- Under nested tmux an Escape takes about half a second to arrive, even
+  with `escape-time 0`.
 
 ## Terminal pitfalls
 

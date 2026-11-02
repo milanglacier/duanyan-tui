@@ -76,6 +76,14 @@ enum Command {
         #[arg(value_enum)]
         shell: Shell,
     },
+    /// Open a popup in tmux, zellij or herdr and type into the pane under it.
+    Popup {
+        #[arg(value_enum)]
+        mux: Mux,
+        /// tmux: the pane (`#{pane_id}`) and the client (`#{client_name}`).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -83,6 +91,34 @@ enum Shell {
     Zsh,
     Bash,
     Fish,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum Mux {
+    Tmux,
+    Zellij,
+    Herdr,
+}
+
+const POPUP_SCRIPT: &str = include_str!("shell/popup.sh");
+
+/// Runs the popup script with this binary's path, so that the popup runs
+/// the same duanyan.
+fn popup(mux: Mux, args: &[String]) -> anyhow::Result<ExitCode> {
+    let exe = std::env::current_exe().context("locating the duanyan binary")?;
+    let mux = match mux {
+        Mux::Tmux => "tmux",
+        Mux::Zellij => "zellij",
+        Mux::Herdr => "herdr",
+    };
+    let status = std::process::Command::new("sh")
+        .args(["-c", POPUP_SCRIPT, "duanyan"])
+        .arg(exe)
+        .arg(mux)
+        .args(args)
+        .status()
+        .context("running sh")?;
+    Ok(ExitCode::from(status.code().unwrap_or(1) as u8))
 }
 
 impl Shell {
@@ -217,16 +253,20 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> anyhow::Result<ExitCode> {
-    if let Some(Command::Init { shell }) = cli.command {
-        print!("{}", shell.script());
-        return Ok(ExitCode::SUCCESS);
+    match &cli.command {
+        Some(Command::Init { shell }) => {
+            print!("{}", shell.script());
+            return Ok(ExitCode::SUCCESS);
+        }
+        Some(Command::Popup { mux, args }) => return popup(*mux, args),
+        _ => {}
     }
     let setup = Setup::resolve(&cli)?;
     match cli.command {
         Some(Command::Info) => info(&setup),
         Some(Command::Deploy { full }) => maintenance(&setup, Some(full)),
         Some(Command::Sync) => maintenance(&setup, None),
-        Some(Command::Init { .. }) => unreachable!(),
+        Some(Command::Init { .. } | Command::Popup { .. }) => unreachable!(),
         None => {
             let (mode, edit) = match cli.file {
                 Some(path) => (Mode::Edit, Some(EditFile::load(path)?)),
@@ -621,5 +661,55 @@ fn event_loop(
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The popup script's placement: screen, pane, cursor and size in,
+    /// "x y w h" out.
+    fn place(args: [i32; 12]) -> String {
+        let out = std::process::Command::new("sh")
+            .args(["-c", POPUP_SCRIPT, "duanyan", "duanyan", "place"])
+            .args(args.map(|n| n.to_string()))
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{out:?}");
+        String::from_utf8(out.stdout).unwrap().trim().to_owned()
+    }
+
+    #[test]
+    fn popup_placement() {
+        // 100x30 screen, pane on the right half, 40x5 popup.
+        let at = |cx, cy| place([0, 0, 100, 30, 50, 0, 50, 29, cx, cy, 40, 5]);
+        // Below the cursor, text column on the cursor.
+        assert_eq!(at(60, 2), "59 3 40 5");
+        // Past the right edge: moved left.
+        assert_eq!(at(90, 2), "60 3 40 5");
+        // No room below: above the cursor.
+        assert_eq!(at(60, 26), "59 21 40 5");
+        assert_eq!(at(60, 28), "59 23 40 5");
+        // Hidden cursor, or one outside the pane: the pane's bottom left.
+        assert_eq!(at(-1, -1), "50 24 40 5");
+        assert_eq!(at(10, 2), "50 24 40 5");
+        // Wider than the screen.
+        assert_eq!(
+            place([0, 0, 100, 30, 50, 0, 50, 29, 60, 2, 200, 5]),
+            "0 3 100 5"
+        );
+        // Room neither below nor above: flush with the bottom.
+        assert_eq!(place([0, 0, 100, 8, 0, 0, 100, 8, 5, 4, 40, 5]), "4 3 40 5");
+        // A screen that does not start at the top (zellij's tab bar, a tmux
+        // status line on top).
+        assert_eq!(
+            place([0, 1, 100, 28, 1, 2, 98, 26, -1, -1, 40, 5]),
+            "1 23 40 5"
+        );
+        assert_eq!(
+            place([0, 1, 100, 28, 1, 2, 98, 26, 1, 2, 40, 5]),
+            "0 3 40 5"
+        );
     }
 }
