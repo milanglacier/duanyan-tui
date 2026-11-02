@@ -759,6 +759,17 @@ wait_for e2e:tmux "半角"
 t send-keys -t e2e:tmux -l "nihao"
 wait_for e2e:tmux "ni hao" && popup_at e2e:tmux "R> y" -5
 popup_cancel e2e:tmux
+
+# A duanyan error, here a broken config file, stays in the popup until Enter.
+mkdir -p "$tmp/bad-config/duanyan"
+echo "not toml [" >"$tmp/bad-config/duanyan/config.toml"
+ti set-environment -g XDG_CONFIG_HOME "$tmp/bad-config"
+t send-keys -t e2e:tmux M-i
+wait_for e2e:tmux "Press Enter to close" >/dev/null &&
+    echo "ok: tmux: a duanyan error stays in the popup"
+t send-keys -t e2e:tmux Enter
+wait_gone e2e:tmux "Press Enter to close"
+ti set-environment -g XDG_CONFIG_HOME "$tmp/config"
 ti kill-server
 
 step "popup: zellij"

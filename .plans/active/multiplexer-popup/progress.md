@@ -56,3 +56,16 @@
 - zellij 浮窗从默认位置挪到光标旁时的闪烁是否可以接受。
 - Claude Code 这类隐藏光标的 TUI 里，弹窗是否出现在窗格左下角。
 - `nix build` 没有跑：`popup.sh` 还没有被 git 跟踪，flake 构建看不到它。
+
+## nix 包在 tmux 里打不开弹窗
+
+- 现象：`nix build` 出来的 duanyan 在 tmux 里按键后弹窗一闪就消失；zellij、herdr 正常。
+- 原因：nix 包原来用 `wrapProgram` 设置 `DUANYAN_LIBRIME_PATH`。`duanyan popup` 用
+  `current_exe()`（未包装的二进制）在 `display-popup` 里再次运行自己，这个进程由
+  tmux server 用全局环境启动，拿不到 wrapper 设置的变量，librime 加载失败；
+  `popup.sh` 又把失败当成取消，静默退出。zellij 和 herdr 里输入界面是 wrapper
+  的子进程，所以没事。e2e 用 `target/debug/duanyan`，没有 wrapper，测不出来。
+- 修复：去掉 wrapper，改为编译时通过 `DUANYAN_BUILD_LIBRIME_PATH`、
+  `DUANYAN_BUILD_RIME_SHARED_DIR` 写入默认路径（优先级在配置文件和环境变量之后）；
+  `popup.sh` 只把退出码 1 当作取消，其他失败显示错误并等待 Enter。e2e 增加了
+  tmux 弹窗里显示错误的检查。

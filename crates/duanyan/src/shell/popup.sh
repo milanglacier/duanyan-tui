@@ -57,11 +57,15 @@ place() {
   echo "$x $y $w $h"
 }
 
-# Runs duanyan; on submit, the text is in $tmp and the status is 0.
+# Runs duanyan; on submit, the text is in $tmp and the status is 0. A cancel
+# returns 1; any other failure is an error, which stays on screen.
 input() {
   tmp=$(mktemp "${TMPDIR:-/tmp}/duanyan-popup.XXXXXX") || die 'mktemp failed'
   trap 'rm -f "$tmp"' EXIT
-  "$exe" --stdout <"/dev/tty" >"$tmp"
+  status=0
+  "$exe" --stdout <"/dev/tty" >"$tmp" || status=$?
+  [ "$status" -le 1 ] || die "duanyan exited with status $status"
+  return "$status"
 }
 
 # The text in file $1 as a bracketed paste, so that its newlines do not act
