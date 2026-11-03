@@ -111,7 +111,7 @@ git commit -m "$(duanyan --stdout)"
 export EDITOR=duanyan    # 或 git config --global core.editor duanyan
 ```
 
-Enter 保存并退出，Ctrl+J 换行；Esc 放弃修改并以非零退出码退出（文件改过时需要再按一次），git 会据此中止提交。
+Enter 保存并退出，Ctrl+J 换行；Esc 放弃修改并以 non-zero exit code 退出（文件改过时需要再按一次），git 会据此中止提交。
 
 | 命令                                  | 说明                                    |
 | ------------------------------------- | --------------------------------------- |
