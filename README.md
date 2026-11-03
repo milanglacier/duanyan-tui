@@ -17,7 +17,7 @@ inline 模式 + shell 集成：
 
 ![inline 模式](assets/inline.gif)
 
-浮窗模式：像图形界面的输入法一样，在 ***任意*** 程序里唤出浮窗，输入中文并直接上屏。支持 tmux、zellij 和 herdr，下面以 tmux + Neovim 为例：
+浮窗模式：像 GUI 的系统输入法一样，在 ***任意*** 程序里唤出浮窗，输入中文并直接上屏。支持 tmux、zellij 和 herdr，下面以 tmux + Neovim 为例：
 
 ![tmux 弹窗模式](assets/popup.gif)
 
