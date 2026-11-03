@@ -208,6 +208,17 @@ t send-keys -t e2e:kkp -l $'\e[57441;2u' $'\e[57441;1:3u'
 wait_for e2e:kkp " 中 " && echo "ok: bare Shift tap toggles back"
 t kill-window -t e2e:kkp
 
+step "theme preset from the config"
+printf '[theme]\npreset = "tokyo-night"\nmode = "dark"\n' >"$tmp/tokyo.toml"
+t new-window -d -n tokyo "$tmp/duanyan --config $tmp/tokyo.toml; sleep 600"
+if wait_for e2e:tokyo "朙月拼音·简化字"; then
+    colors=$(t capture-pane -e -p -t e2e:tokyo)
+    # Tokyo Night's fg #c0caf5 on bg #1a1b26.
+    check "tokyo-night text color" "$([[ $colors == *'38;2;192;202;245'* ]] && echo yes)" yes
+    check "tokyo-night background" "$([[ $colors == *'48;2;26;27;38'* ]] && echo yes)" yes
+fi
+t kill-window -t e2e:tokyo
+
 check "--help follows the locale" "$(DUANYAN_E2E_LOCALE=zh_TW.UTF-8 "$tmp/duanyan" --help | head -1)" \
     "端硯：基於 rime 的終端機中文輸入草稿板"
 

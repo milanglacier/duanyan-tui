@@ -23,6 +23,8 @@ show_candidate_comment = true
 language = "auto"                           # auto | simplified | traditional
 
 [theme]
+# Each preset has a dark and a light variant; `mode` picks one.
+preset = "catppuccin"                       # catppuccin | rose-pine | tokyo-night | solarized
 mode = "auto"                               # auto | dark | light
 
 # Per-color overrides, e.g.:

@@ -106,9 +106,20 @@ pub enum ThemeMode {
     Light,
 }
 
+/// A color family; `ThemeMode` picks its dark or light variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemePreset {
+    Catppuccin,
+    RosePine,
+    TokyoNight,
+    Solarized,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeSection {
+    pub preset: ThemePreset,
     pub mode: ThemeMode,
     #[serde(default)]
     pub colors: BTreeMap<String, String>,
@@ -520,6 +531,24 @@ mod tests {
             let cfg = Config::from_str(&format!("[tui]\nlanguage = \"{value}\"\n")).unwrap();
             assert_eq!(cfg.tui.language, want);
         }
+    }
+
+    #[test]
+    fn theme_preset_values() {
+        assert_eq!(
+            Config::default_config().theme.preset,
+            ThemePreset::Catppuccin
+        );
+        for (value, want) in [
+            ("catppuccin", ThemePreset::Catppuccin),
+            ("rose-pine", ThemePreset::RosePine),
+            ("tokyo-night", ThemePreset::TokyoNight),
+            ("solarized", ThemePreset::Solarized),
+        ] {
+            let cfg = Config::from_str(&format!("[theme]\npreset = \"{value}\"\n")).unwrap();
+            assert_eq!(cfg.theme.preset, want);
+        }
+        assert!(Config::from_str("[theme]\npreset = \"dracula\"\n").is_err());
     }
 
     #[test]

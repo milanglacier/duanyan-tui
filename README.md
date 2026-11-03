@@ -252,7 +252,7 @@ height = 7
 | `[general]`      | 提交时是否复制到剪贴板                      |
 | `[rime]`         | librime 路径、rime 数据目录、启动时部署策略 |
 | `[tui]`          | 键盘协议、鼠标、候选词排列、界面简繁        |
-| `[theme]`        | 深浅色与配色                                |
+| `[theme]`        | 配色预设、深浅色与逐项配色                  |
 | `[clipboard]`    | 剪贴板后端                                  |
 | `[history]`      | 是否持久化历史、条数上限                    |
 | `[keybinding.*]` | 键位绑定                                    |
@@ -267,12 +267,15 @@ deploy_on_startup = "auto"   # notify | auto | never
 language = "auto"     # auto | simplified | traditional
 
 [theme]
+preset = "rose-pine"         # catppuccin | rose-pine | tokyo-night | solarized
 mode = "dark"                # auto | dark | light
 
 [clipboard]
 # backend = "command"          # 推荐不填（默认 OSC 52，自动处理）
 # command = ["wl-copy"]
 ```
+
+每套配色预设都有深浅两版，由 `theme.mode` 选择：Catppuccin 为 Mocha / Latte，Rosé Pine 为 Moon / Dawn，Tokyo Night 为 Night / Day，Solarized 为 Dark / Light。
 
 ## 按键
 

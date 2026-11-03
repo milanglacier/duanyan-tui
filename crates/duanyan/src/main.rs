@@ -460,8 +460,7 @@ fn tui(
             })
             .unwrap_or(false),
     };
-    let base = if light { Theme::LATTE } else { Theme::MOCHA };
-    let theme = base.with_overrides(&cfg.theme.colors)?;
+    let theme = Theme::preset(cfg.theme.preset, light).with_overrides(&cfg.theme.colors)?;
 
     let modes = tty::Modes {
         alternate_screen: !inline,

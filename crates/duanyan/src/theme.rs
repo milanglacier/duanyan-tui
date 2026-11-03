@@ -1,8 +1,11 @@
-//! Built-in Catppuccin Mocha / Latte palettes and per-color overrides.
+//! Built-in palettes (a dark and a light variant per preset) and per-color
+//! overrides.
 
 use std::collections::BTreeMap;
 
 use ratatui::style::Color;
+
+use crate::config::ThemePreset;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Theme {
@@ -75,6 +78,156 @@ impl Theme {
         selection_bg: hex(0xccd0da),
         key_bg: hex(0xccd0da),
     };
+
+    // Rosé Pine colors are from rose-pine/neovim `palette.lua`. The accent is
+    // iris, which Rosé Pine's terminal palettes use as magenta. The title is
+    // foam on Moon and pine on Dawn: Dawn's foam is too faint on its light base.
+    pub const ROSE_PINE_MOON: Self = Self {
+        bg: hex(0x232136),
+        surface: hex(0x2a273f),
+        border: hex(0x56526e),
+        border_focus: hex(0xc4a7e7),
+        text: hex(0xe0def4),
+        subtext: hex(0x908caa),
+        accent: hex(0xc4a7e7),
+        title: hex(0x9ccfd8),
+        preedit: hex(0xc4a7e7),
+        candidate_index: hex(0x6e6a86),
+        candidate_hl_bg: hex(0xc4a7e7),
+        candidate_hl_fg: hex(0x232136),
+        comment: hex(0x6e6a86),
+        success: hex(0x95b1ac),
+        warning: hex(0xf6c177),
+        error: hex(0xeb6f92),
+        status_bg: hex(0x2a273f),
+        selection_bg: hex(0x44415a),
+        key_bg: hex(0x44415a),
+    };
+
+    pub const ROSE_PINE_DAWN: Self = Self {
+        bg: hex(0xfaf4ed),
+        surface: hex(0xfffaf3),
+        border: hex(0xcecacd),
+        border_focus: hex(0x907aa9),
+        text: hex(0x464261),
+        subtext: hex(0x797593),
+        accent: hex(0x907aa9),
+        title: hex(0x286983),
+        preedit: hex(0x907aa9),
+        candidate_index: hex(0x9893a5),
+        candidate_hl_bg: hex(0x907aa9),
+        candidate_hl_fg: hex(0xfaf4ed),
+        comment: hex(0x9893a5),
+        success: hex(0x6d8f89),
+        warning: hex(0xea9d34),
+        error: hex(0xb4637a),
+        // Dawn's surface is lighter than its base and barely distinct.
+        status_bg: hex(0xf2e9e1),
+        selection_bg: hex(0xdfdad9),
+        key_bg: hex(0xdfdad9),
+    };
+
+    // Tokyo Night colors are from folke/tokyonight.nvim `extras/lua`.
+    pub const TOKYO_NIGHT: Self = Self {
+        bg: hex(0x1a1b26),
+        surface: hex(0x292e42),
+        border: hex(0x3b4261),
+        border_focus: hex(0x7aa2f7),
+        text: hex(0xc0caf5),
+        subtext: hex(0x737aa2),
+        accent: hex(0x7aa2f7),
+        title: hex(0xbb9af7),
+        preedit: hex(0x7aa2f7),
+        candidate_index: hex(0x565f89),
+        candidate_hl_bg: hex(0x7aa2f7),
+        candidate_hl_fg: hex(0x1a1b26),
+        comment: hex(0x565f89),
+        success: hex(0x9ece6a),
+        warning: hex(0xe0af68),
+        error: hex(0xf7768e),
+        status_bg: hex(0x16161e),
+        selection_bg: hex(0x283457),
+        key_bg: hex(0x3b4261),
+    };
+
+    pub const TOKYO_DAY: Self = Self {
+        bg: hex(0xe1e2e7),
+        surface: hex(0xc4c8da),
+        border: hex(0xa8aecb),
+        border_focus: hex(0x2e7de9),
+        text: hex(0x3760bf),
+        subtext: hex(0x68709a),
+        accent: hex(0x2e7de9),
+        title: hex(0x9854f1),
+        preedit: hex(0x2e7de9),
+        candidate_index: hex(0x848cb5),
+        candidate_hl_bg: hex(0x2e7de9),
+        candidate_hl_fg: hex(0xe1e2e7),
+        comment: hex(0x848cb5),
+        success: hex(0x587539),
+        warning: hex(0x8c6c3e),
+        error: hex(0xf52a65),
+        status_bg: hex(0xd0d5e3),
+        selection_bg: hex(0xb7c1e3),
+        key_bg: hex(0xc4c8da),
+    };
+
+    pub const SOLARIZED_DARK: Self = Self {
+        bg: hex(0x002b36),
+        surface: hex(0x073642),
+        border: hex(0x586e75),
+        border_focus: hex(0x268bd2),
+        text: hex(0x839496),
+        subtext: hex(0x657b83),
+        accent: hex(0x268bd2),
+        title: hex(0x6c71c4),
+        preedit: hex(0x268bd2),
+        candidate_index: hex(0x586e75),
+        candidate_hl_bg: hex(0x268bd2),
+        candidate_hl_fg: hex(0x002b36),
+        comment: hex(0x586e75),
+        success: hex(0x859900),
+        warning: hex(0xb58900),
+        error: hex(0xdc322f),
+        status_bg: hex(0x073642),
+        selection_bg: hex(0x073642),
+        key_bg: hex(0x073642),
+    };
+
+    pub const SOLARIZED_LIGHT: Self = Self {
+        bg: hex(0xfdf6e3),
+        surface: hex(0xeee8d5),
+        border: hex(0x93a1a1),
+        border_focus: hex(0x268bd2),
+        text: hex(0x657b83),
+        subtext: hex(0x839496),
+        accent: hex(0x268bd2),
+        title: hex(0x6c71c4),
+        preedit: hex(0x268bd2),
+        candidate_index: hex(0x93a1a1),
+        candidate_hl_bg: hex(0x268bd2),
+        candidate_hl_fg: hex(0xfdf6e3),
+        comment: hex(0x93a1a1),
+        success: hex(0x859900),
+        warning: hex(0xb58900),
+        error: hex(0xdc322f),
+        status_bg: hex(0xeee8d5),
+        selection_bg: hex(0xeee8d5),
+        key_bg: hex(0xeee8d5),
+    };
+
+    pub fn preset(preset: ThemePreset, light: bool) -> Self {
+        match (preset, light) {
+            (ThemePreset::Catppuccin, false) => Self::MOCHA,
+            (ThemePreset::Catppuccin, true) => Self::LATTE,
+            (ThemePreset::RosePine, false) => Self::ROSE_PINE_MOON,
+            (ThemePreset::RosePine, true) => Self::ROSE_PINE_DAWN,
+            (ThemePreset::TokyoNight, false) => Self::TOKYO_NIGHT,
+            (ThemePreset::TokyoNight, true) => Self::TOKYO_DAY,
+            (ThemePreset::Solarized, false) => Self::SOLARIZED_DARK,
+            (ThemePreset::Solarized, true) => Self::SOLARIZED_LIGHT,
+        }
+    }
 
     /// Applies `[theme.colors]`; unknown names and bad colors are errors.
     pub fn with_overrides(mut self, colors: &BTreeMap<String, String>) -> anyhow::Result<Self> {
@@ -149,6 +302,23 @@ mod tests {
         assert_eq!(t.text, Color::Red);
         m.insert("nope".into(), "#000000".into());
         assert!(Theme::MOCHA.with_overrides(&m).is_err());
+    }
+
+    #[test]
+    fn presets() {
+        use ThemePreset::*;
+        for preset in [Catppuccin, RosePine, TokyoNight, Solarized] {
+            let dark = Theme::preset(preset, false);
+            let light = Theme::preset(preset, true);
+            assert_ne!(dark, light, "{preset:?}");
+            for t in [dark, light] {
+                // Highlighted candidates are drawn in the background color.
+                assert_eq!(t.candidate_hl_fg, t.bg, "{preset:?}");
+            }
+        }
+        assert_eq!(Theme::preset(Catppuccin, false), Theme::MOCHA);
+        assert_eq!(Theme::preset(RosePine, false), Theme::ROSE_PINE_MOON);
+        assert_eq!(Theme::preset(RosePine, true), Theme::ROSE_PINE_DAWN);
     }
 
     #[test]
