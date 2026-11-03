@@ -13,6 +13,10 @@ inline 模式 + shell 集成：
 
 ![inline 模式](assets/inline.gif)
 
+弹窗模式支持 tmux、zellij 和 herdr。在这些终端复用器里，无论你正在用什么程序，都可以按快捷键打开端砚输入中文。输入完按 Enter，文字就会出现在原来的程序里。下面以 tmux 中的 Neovim 为例：
+
+![tmux 弹窗模式](assets/popup.gif)
+
 全屏模式（`duanyan`）：
 
 ![全屏模式](assets/fullscreen.gif)
