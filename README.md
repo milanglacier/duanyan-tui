@@ -27,31 +27,6 @@ inline 模式 + shell 集成：
 
 ## 安装
 
-运行需要 librime ≥ 1.8 和 rime 方案数据（如 `rime-data`）。Releases 里的 bundled 包自带 librime，bundled-frost 包还自带白霜拼音，下载即用，见[预编译二进制](#预编译二进制)。
-
-librime 和 rime 共享数据目录会自动探测，也可以在 `~/.config/duanyan/config.toml` 里手动指定：
-
-```toml
-[rime]
-librime_path = "/path/to/librime.so.1"     # macOS 上是 librime.1.dylib
-shared_data_dir = "/path/to/rime-data"
-```
-
-也可以用环境变量 `DUANYAN_LIBRIME_PATH` / `DUANYAN_RIME_SHARED_DIR` 指定，配置文件优先。`duanyan info` 可以查看实际使用的位置。
-
-### Nix
-
-```sh
-nix run github:milanglacier/duanyan-tui
-nix profile install github:milanglacier/duanyan-tui
-```
-
-也可以把本仓库加为 flake input，使用 `inputs.duanyan.packages.${system}.default`。这样 librime 由 nix 提供；想连方案数据一起打包：
-
-```nix
-duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
-```
-
 ### 预编译二进制
 
 [Releases](https://github.com/milanglacier/duanyan-tui/releases) 提供 Linux 与 macOS 的 x86_64 / aarch64 二进制，Linux 版本要求 glibc ≥ 2.35。每个平台有三种包，表中每一种都包含下一行那种的全部内容。以 x86_64 Linux 为例：
@@ -86,6 +61,19 @@ bundled-frost 包解压后直接运行 `duanyan` 即可，首次启动会自动�
 git clone --depth 1 https://github.com/iDvel/rime-ice ~/.config/duanyan/rime
 ```
 
+### Nix
+
+```sh
+nix run github:milanglacier/duanyan-tui
+nix profile install github:milanglacier/duanyan-tui
+```
+
+也可以把本仓库加为 flake input，使用 `inputs.duanyan.packages.${system}.default`。这样 librime 由 nix 提供；想连方案数据一起打包：
+
+```nix
+duanyan.override { rimeDataPackages = [ pkgs.rime-data ]; }
+```
+
 ### cargo
 
 需要系统已安装 librime：
@@ -100,6 +88,8 @@ cargo install --git https://github.com/milanglacier/duanyan-tui duanyan
 nix build              # 推荐：自带工具链、librime 和 rime-data
 cargo build --release  # 需要系统已安装 librime
 ```
+
+使用不带 librime 的预编译包或通过 cargo 安装、构建时，需要自行安装 librime ≥ 1.8 和 rime 方案数据（如 `rime-data`）。依赖路径会自动探测；需要手动指定时，见[配置](#配置)。
 
 ## 使用
 
@@ -190,9 +180,9 @@ bind \cx\cd duanyan_widget
 
 </details>
 
-### tmux / zellij / herdr 弹窗
+### tmux / zellij / herdr 浮窗
 
-在 tmux、zellij 或 herdr 里，可以绑定一个快捷键来打字：按下后光标旁会弹出一个小输入框，打完字按 Enter，文字就会出现在原终端窗口里，用起来和系统输入法差不多；按 Esc 取消。
+在 tmux、zellij 或 herdr 里，可以绑定一个快捷键来打字：按下后光标旁会弹出一个小输入框，打完字按 Enter，文字就会出现在原终端窗口里，用起来和 GUI 系统输入法差不多；按 Esc 取消。
 
 下面的配置以 Alt+i 为例，可以换成任何不冲突的按键。
 
@@ -284,6 +274,16 @@ mode = "dark"                # auto | dark | light
 ```
 
 每套配色预设都有深浅两版，由 `theme.mode` 选择：Catppuccin 为 Mocha / Latte，Rosé Pine 为 Moon / Dawn，Tokyo Night 为 Night / Day，Solarized 为 Dark / Light。
+
+librime 和 rime 共享数据目录会自动探测，通常无需配置。需要使用其他位置时，可以在 `~/.config/duanyan/config.toml` 里手动指定：
+
+```toml
+[rime]
+librime_path = "/path/to/librime.so.1"     # macOS 上是 librime.1.dylib
+shared_data_dir = "/path/to/rime-data"
+```
+
+也可以用环境变量 `DUANYAN_LIBRIME_PATH` / `DUANYAN_RIME_SHARED_DIR` 指定，配置文件优先。`duanyan info` 可以查看实际使用的位置。
 
 ## 按键
 
