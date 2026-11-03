@@ -24,7 +24,6 @@
         {
           lib,
           rustPlatform,
-          makeWrapper,
           symlinkJoin,
           librime,
           rime-data,
@@ -52,16 +51,20 @@
             ];
           };
           cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = [ makeWrapper ];
+          # Compiled in rather than set by a wrapper: duanyan runs itself
+          # again (the popups do), and a tmux popup would miss the wrapper's
+          # environment.
+          env = {
+            DUANYAN_BUILD_LIBRIME_PATH = libFile;
+          }
+          // lib.optionalAttrs (rimeDataPackages != [ ]) {
+            DUANYAN_BUILD_RIME_SHARED_DIR = "${rimeData}/share/rime-data";
+          };
           # Integration tests need librime, rime-data and the C header.
           preCheck = ''
             export DUANYAN_LIBRIME_PATH=${libFile}
             export DUANYAN_RIME_SHARED_DIR=${rime-data}/share/rime-data
             export RIME_INCLUDE_DIR=${librime}/include
-          '';
-          postInstall = ''
-            wrapProgram $out/bin/duanyan \
-              --set-default DUANYAN_LIBRIME_PATH ${libFile} ${lib.optionalString (rimeDataPackages != [ ]) "--set-default DUANYAN_RIME_SHARED_DIR ${rimeData}/share/rime-data"}
           '';
           meta = {
             description = "Fullscreen TUI Chinese input scratchpad powered by librime";
@@ -94,6 +97,9 @@
             fish
             bashInteractive
             git # scripts/e2e.sh: duanyan as GIT_EDITOR
+            zellij # scripts/e2e.sh: popups
+            herdr
+            jq
           ];
           DUANYAN_LIBRIME_PATH = librimeFile pkgs;
           DUANYAN_RIME_SHARED_DIR = "${pkgs.rime-data}/share/rime-data";

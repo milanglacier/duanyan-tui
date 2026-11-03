@@ -47,6 +47,10 @@ pub trait Env {
     fn exists(&self, p: &Path) -> bool;
     /// Directory of the running executable, with symlinks resolved.
     fn exe_dir(&self) -> Option<PathBuf>;
+    /// The default for `DUANYAN_LIBRIME_PATH` or `DUANYAN_RIME_SHARED_DIR`
+    /// compiled in from `DUANYAN_BUILD_LIBRIME_PATH` or
+    /// `DUANYAN_BUILD_RIME_SHARED_DIR`, as the nix package does.
+    fn build_default(&self, key: &str) -> Option<OsString>;
 }
 
 pub struct RealEnv;
@@ -63,6 +67,20 @@ impl Env for RealEnv {
         let exe = env::current_exe().and_then(std::fs::canonicalize).ok()?;
         exe.parent().map(Path::to_owned)
     }
+    fn build_default(&self, key: &str) -> Option<OsString> {
+        match key {
+            "DUANYAN_LIBRIME_PATH" => option_env!("DUANYAN_BUILD_LIBRIME_PATH"),
+            "DUANYAN_RIME_SHARED_DIR" => option_env!("DUANYAN_BUILD_RIME_SHARED_DIR"),
+            _ => None,
+        }
+        .filter(|v| !v.is_empty())
+        .map(OsString::from)
+    }
+}
+
+/// `key` from the environment, else its compiled-in default.
+fn var_or_build_default(env: &dyn Env, key: &str) -> Option<OsString> {
+    env.var(key).or_else(|| env.build_default(key))
 }
 
 /// Where librime may live, in the order they are tried. Bare names are
@@ -72,7 +90,7 @@ pub fn librime_candidates(configured: Option<&Path>, env: &dyn Env) -> Vec<PathB
     if let Some(p) = configured {
         out.push(expand_tilde(p));
     }
-    if let Some(p) = env.var("DUANYAN_LIBRIME_PATH") {
+    if let Some(p) = var_or_build_default(env, "DUANYAN_LIBRIME_PATH") {
         out.push(PathBuf::from(p));
     }
     let name = rime_dl::default_library_name();
@@ -145,7 +163,7 @@ pub fn find_shared_data_dir(
     if let Some(p) = configured {
         return Some((expand_tilde(p), SharedDirSource::Found));
     }
-    if let Some(p) = env.var("DUANYAN_RIME_SHARED_DIR") {
+    if let Some(p) = var_or_build_default(env, "DUANYAN_RIME_SHARED_DIR") {
         return Some((PathBuf::from(p), SharedDirSource::Found));
     }
     let bundled = env.exe_dir().and_then(|exe_dir| {
@@ -197,6 +215,7 @@ mod tests {
     #[derive(Default)]
     struct FakeEnv {
         vars: HashMap<&'static str, &'static str>,
+        build_defaults: HashMap<&'static str, &'static str>,
         files: HashSet<PathBuf>,
         exe_dir: Option<PathBuf>,
     }
@@ -210,6 +229,9 @@ mod tests {
         }
         fn exe_dir(&self) -> Option<PathBuf> {
             self.exe_dir.clone()
+        }
+        fn build_default(&self, key: &str) -> Option<OsString> {
+            self.build_defaults.get(key).map(OsString::from)
         }
     }
 
@@ -255,6 +277,37 @@ mod tests {
         assert_eq!(c[0], PathBuf::from("/env/librime"));
         assert_eq!(c[1], Path::new("/opt/lib").join(name));
         assert_eq!(c[2], PathBuf::from(name));
+    }
+
+    #[test]
+    fn build_defaults() {
+        let name = rime_dl::default_library_name();
+        let mut env = FakeEnv::default();
+        env.vars.insert("HOME", "/home/u");
+        env.exe_dir = Some(PathBuf::from("/opt/bin"));
+        env.files.insert(Path::new("/opt/lib").join(name));
+        env.files.insert(PathBuf::from("/usr/share/rime-data"));
+        env.build_defaults
+            .insert("DUANYAN_LIBRIME_PATH", "/nix/store/x/lib/librime");
+        env.build_defaults
+            .insert("DUANYAN_RIME_SHARED_DIR", "/nix/store/y/rime-data");
+        let found = |p: &str| Some((PathBuf::from(p), SharedDirSource::Found));
+
+        // Ahead of everything but the config file and the environment.
+        let c = librime_candidates(None, &env);
+        assert_eq!(c[0], PathBuf::from("/nix/store/x/lib/librime"));
+        assert_eq!(c[1], Path::new("/opt/lib").join(name));
+        assert_eq!(
+            find_shared_data_dir(None, &env),
+            found("/nix/store/y/rime-data")
+        );
+
+        env.vars.insert("DUANYAN_LIBRIME_PATH", "/env/librime");
+        env.vars.insert("DUANYAN_RIME_SHARED_DIR", "/env/rime-data");
+        let c = librime_candidates(None, &env);
+        assert_eq!(c[0], PathBuf::from("/env/librime"));
+        assert_eq!(c[1], Path::new("/opt/lib").join(name));
+        assert_eq!(find_shared_data_dir(None, &env), found("/env/rime-data"));
     }
 
     #[test]

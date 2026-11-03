@@ -22,7 +22,11 @@ bin="$root/target/debug/duanyan"
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/duanyan-e2e.XXXXXX")
 sock="duanyan-e2e-$$"
+# Commands that stop the nested multiplexers of the popup checks.
+popup_cleanup=()
 cleanup() {
+    local c
+    for c in "${popup_cleanup[@]}"; do eval "$c" >/dev/null 2>&1; done
     tmux -L "$sock" kill-server 2>/dev/null || true
     if [[ -z "${KEEP:-}" ]]; then rm -rf "$tmp"; else echo "kept $tmp"; fi
 }
@@ -612,6 +616,257 @@ wait_for e2e:schemas "包内方案" 60 && echo "ok: the bundled default.yaml sel
 t send-keys -t e2e:schemas -l "nihao"
 wait_for e2e:schemas "包内词条" && echo "ok: the bundled dictionary is used"
 check "bundled schemas stderr.log is empty" "$(cat "$tmp/schemas/state/duanyan/log/stderr.log" 2>/dev/null)" ""
+
+# Popups: an inner multiplexer runs in an outer tmux window, which plays the
+# terminal; the checks read the outer screen. The inner multiplexers get a
+# temporary HOME so that nothing they do touches the user's files.
+mkdir -p "$tmp/mux-home"
+# The prompt comes through MUX_PS1: a PS1 in the environment does not
+# survive /bin/sh when that is bash (NixOS).
+cat >"$tmp/mux-shell" <<'EOF'
+#!/bin/sh
+exec env PS1="$MUX_PS1" bash --norc --noprofile
+EOF
+chmod +x "$tmp/mux-shell"
+# A light terminal, for the light_popup checks.
+t set -g window-style bg=#eff1f5
+
+# light_popup PANE MUX: the open popup uses the light theme and the
+# terminal's background; only the status line's accent has a background.
+light_popup() {
+    local status
+    status=$(t capture-pane -e -p -t "$1" | grep "半角")
+    check "$2: popup text in the light theme" \
+        "$([[ $status == *$'\e[38;2;76;79;105m'* ]] && echo latte)" latte
+    check "$2: popup on the terminal background" \
+        "$(grep -o '48;[0-9;]*' <<<"$status" | sort -u)" "48;2;30;102;245"
+}
+
+# col_of PANE ROW TEXT: the 0-based column where TEXT starts on ROW.
+col_of() {
+    local LC_ALL=C.UTF-8 line
+    line=$(screen "$1" | sed -n "$(($2 + 1))p")
+    line=${line%%"$3"*}
+    echo "${#line}"
+}
+
+# popup_at PANE PROMPT_LINE ROWS: the popup's text row is ROWS below the
+# cursor row (negative: above) and starts at the cursor column.
+popup_at() {
+    local pane=$1 prompt=$2 row col text_row
+    row=$(row_of "$pane" "$prompt")
+    col=$(($(col_of "$pane" "$row" "$prompt") + ${#prompt}))
+    text_row=$(row_of "$pane" "ni hao")
+    check "[$pane] popup row" "$((text_row - row))" "$3"
+    check "[$pane] popup text column on the cursor" "$(col_of "$pane" "$text_row" "ni hao")" "$col"
+}
+
+# wait_gone PANE TEXT: polls until TEXT is no longer on the screen.
+wait_gone() {
+    local deadline=$((SECONDS + 10))
+    while ((SECONDS < deadline)); do
+        [[ "$(screen "$1")" != *"$2"* ]] && return 0
+        sleep 0.1
+    done
+    echo "FAIL: [$1] still showing: $2" >&2
+    screen "$1" | sed 's/^/    | /' >&2
+    failures=$((failures + 1))
+    return 1
+}
+
+# popup_submit PANE: with "nihao" composing in the open popup, adds a second
+# line and submits both.
+popup_submit() {
+    t send-keys -t "$1" -l " "
+    t send-keys -t "$1" C-j
+    t send-keys -t "$1" -l "shijie"
+    wait_for "$1" "shi jie" >/dev/null
+    t send-keys -t "$1" -l " "
+    wait_gone "$1" "shi jie"
+    t send-keys -t "$1" Enter
+}
+
+# not_run PANE: the pasted lines stayed on the command line.
+not_run() {
+    sleep 0.5
+    [[ "$(screen "$1")" != *"not found"* ]] && echo "ok: [$1] pasted lines not run" ||
+        { echo "FAIL: [$1] pasted lines were run" >&2; failures=$((failures + 1)); }
+}
+
+step "popup: tmux"
+isock="$sock-inner"
+popup_cleanup+=("tmux -L $isock kill-server")
+ti() { tmux -L "$isock" -f /dev/null "$@"; }
+ti new-session -d -s in -x 100 -y 29 "MUX_PS1='L> ' $tmp/mux-shell"
+# run-shell and the popup get the server's environment.
+for v in XDG_CONFIG_HOME="$tmp/config" XDG_STATE_HOME="$tmp/state" LC_MESSAGES=zh_CN.UTF-8 \
+    HOME="$tmp/mux-home" DUANYAN_POPUP_WIDTH=30; do
+    ti set-environment -g "${v%%=*}" "${v#*=}"
+done
+ti set-environment -gu LANGUAGE
+ti set-environment -gu LC_ALL
+ti bind-key -n M-i run-shell -b "$bin popup tmux '#{pane_id}' '#{client_name}'"
+ti split-window -h -t in "MUX_PS1='R> ' $tmp/mux-shell"
+t new-window -d -n tmux "tmux -L $isock -f /dev/null attach -t in"
+# tmux 3.8's default popup style: grey.
+ti set -g popup-style bg=#737373,fg=#f2f2f2
+
+# right_pane WHAT TEXT: polls the inner right pane until its first lines are
+# TEXT. duanyan clears the popup before the script pastes, so the popup
+# going blank does not mean the text has arrived.
+right_pane() {
+    local deadline=$((SECONDS + 10)) n got
+    n=$(printf '%s\n' "$2" | wc -l)
+    while ((SECONDS < deadline)); do
+        got=$(ti capture-pane -p -t in:0.1 | sed -n "1,${n}p")
+        [[ $got == "$2" ]] && break
+        sleep 0.1
+    done
+    check "$1" "$got" "$2"
+}
+
+# popup_cancel PANE: clears the composition, then cancels. Under nested tmux
+# an Escape takes about half a second to arrive.
+popup_cancel() {
+    t send-keys -t "$1" Escape
+    wait_gone "$1" "ni hao"
+    t send-keys -t "$1" Escape
+    wait_gone "$1" "半角"
+}
+
+wait_for e2e:tmux "R>"
+t send-keys -t e2e:tmux -l "printf abc"
+t send-keys -t e2e:tmux M-i
+wait_for e2e:tmux "半角"
+t send-keys -t e2e:tmux -l "nihao"
+wait_for e2e:tmux "ni hao" && popup_at e2e:tmux "R> printf abc" 1
+light_popup e2e:tmux tmux
+popup_submit e2e:tmux
+right_pane "tmux: two lines pasted into the pane" $'R> printf abc你好\n世界'
+not_run e2e:tmux
+t send-keys -t e2e:tmux C-c
+
+t send-keys -t e2e:tmux -l "clear"
+t send-keys -t e2e:tmux Enter
+# Otherwise the shell can echo "x" before clearing the screen.
+deadline=$((SECONDS + 10))
+until [[ "$(ti capture-pane -p -t in:0.1)" == "R>" ]] || ((SECONDS > deadline)); do sleep 0.1; done
+t send-keys -t e2e:tmux -l "x"
+t send-keys -t e2e:tmux M-i
+wait_for e2e:tmux "半角"
+t send-keys -t e2e:tmux -l "nihao"
+wait_for e2e:tmux "ni hao"
+popup_cancel e2e:tmux
+right_pane "tmux: esc pastes nothing" "R> x"
+
+ti set -g status-position top
+deadline=$((SECONDS + 10))
+until [[ "$(screen e2e:tmux | head -1)" == "[in]"* ]] || ((SECONDS > deadline)); do sleep 0.1; done
+t send-keys -t e2e:tmux M-i
+wait_for e2e:tmux "半角"
+t send-keys -t e2e:tmux -l "nihao"
+wait_for e2e:tmux "ni hao" && popup_at e2e:tmux "R> x" 1
+popup_cancel e2e:tmux
+
+t send-keys -t e2e:tmux C-u
+t send-keys -t e2e:tmux -l "seq 1 40"
+t send-keys -t e2e:tmux Enter
+wait_for e2e:tmux $'40\n'
+t send-keys -t e2e:tmux -l "y"
+t send-keys -t e2e:tmux M-i
+wait_for e2e:tmux "半角"
+t send-keys -t e2e:tmux -l "nihao"
+wait_for e2e:tmux "ni hao" && popup_at e2e:tmux "R> y" -5
+popup_cancel e2e:tmux
+
+# A duanyan error, here a broken config file, stays in the popup until Enter.
+mkdir -p "$tmp/bad-config/duanyan"
+echo "not toml [" >"$tmp/bad-config/duanyan/config.toml"
+ti set-environment -g XDG_CONFIG_HOME "$tmp/bad-config"
+t send-keys -t e2e:tmux M-i
+wait_for e2e:tmux "Press Enter to close" >/dev/null &&
+    echo "ok: tmux: a duanyan error stays in the popup"
+t send-keys -t e2e:tmux Enter
+wait_gone e2e:tmux "Press Enter to close"
+ti set-environment -g XDG_CONFIG_HOME "$tmp/config"
+ti kill-server
+
+step "popup: zellij"
+if ! command -v zellij >/dev/null || ! command -v jq >/dev/null; then
+    echo "skip: zellij or jq not found"
+else
+    zsession="duanyan-e2e-$$"
+    mkdir -p "$tmp/zellij"
+    cat >"$tmp/zellij/config.kdl" <<EOF
+show_startup_tips false
+show_release_notes false
+keybinds {
+    shared_except "locked" {
+        bind "Alt i" {
+            Run "$tmp/duanyan" "popup" "zellij" {
+                floating true
+                close_on_exit true
+                borderless true
+                width 30
+                height 5
+            }
+        }
+    }
+}
+EOF
+    zenv="env HOME=$tmp/mux-home XDG_CACHE_HOME=$tmp/mux-home/.cache ZELLIJ_CONFIG_DIR=$tmp/zellij DUANYAN_POPUP_WIDTH=30"
+    popup_cleanup+=("$zenv zellij kill-session $zsession; $zenv zellij delete-session --force $zsession")
+    t new-window -d -n zellij "MUX_PS1='Z> ' $zenv zellij -s $zsession options --default-shell $tmp/mux-shell"
+    wait_for e2e:zellij "Z>" 30
+    t send-keys -t e2e:zellij -l "printf abc"
+    t send-keys -t e2e:zellij M-i
+    wait_for e2e:zellij "半角"
+    t send-keys -t e2e:zellij -l "nihao"
+    wait_for e2e:zellij "ni hao" && popup_at e2e:zellij "Z> printf abc" 1
+    light_popup e2e:zellij zellij
+    popup_submit e2e:zellij
+    wait_gone e2e:zellij "半角"
+    wait_for e2e:zellij $'Z> printf abc你好\n世界' && echo "ok: zellij: two lines pasted into the pane"
+    not_run e2e:zellij
+fi
+
+step "popup: herdr"
+if ! command -v herdr >/dev/null; then
+    echo "skip: herdr not found"
+else
+    # herdr refuses to nest, and its commands would reach the herdr this
+    # script may run in, unless the HERDR_* variables are gone.
+    henv="env $(env | sed -n 's/^\(HERDR_[A-Za-z0-9_]*\)=.*/-u \1/p' | tr '\n' ' ')"
+    henv+="HOME=$tmp/mux-home XDG_CONFIG_HOME=$tmp/herdr-config SHELL=$tmp/mux-shell"
+    hsession="duanyan-e2e-$$"
+    mkdir -p "$tmp/herdr-config/herdr"
+    # Without onboarding = false, keys sent too early land in its dialogs.
+    cat >"$tmp/herdr-config/herdr/config.toml" <<EOF
+onboarding = false
+
+[[keys.command]]
+key = "prefix+alt+i"
+type = "popup"
+command = "$tmp/duanyan popup herdr"
+width = 40
+height = 7
+EOF
+    popup_cleanup+=("$henv herdr --session $hsession server stop")
+    t new-window -d -n herdr "MUX_PS1='H> ' $henv herdr --session $hsession"
+    wait_for e2e:herdr "H>" 30
+    t send-keys -t e2e:herdr -l "printf abc"
+    t send-keys -t e2e:herdr C-b
+    sleep 0.3
+    t send-keys -t e2e:herdr M-i
+    wait_for e2e:herdr "半角"
+    t send-keys -t e2e:herdr -l "nihao"
+    wait_for e2e:herdr "ni hao"
+    popup_submit e2e:herdr
+    wait_gone e2e:herdr "半角"
+    wait_for e2e:herdr "H> printf abc你好" && wait_for e2e:herdr "世界" &&
+        echo "ok: herdr: two lines pasted into the pane"
+    not_run e2e:herdr
+fi
 
 step "nothing leaked to stderr"
 check "stderr.log is empty" "$(cat "$tmp/state/duanyan/log/stderr.log" 2>/dev/null)" ""
