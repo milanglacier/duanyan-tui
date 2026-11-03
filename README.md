@@ -10,14 +10,14 @@ APP。在没有系统输入法的环境里（SSH、TTY）用 rime 打字，有�
 - 直接运行 `duanyan`，输入完后回车，文字自动复制到剪贴板；
 - 在 shell prompt 里直接当输入法用：输入 `^^` 再按 Tab 上屏（类似 fzf 的 `**<Tab>`，也可定义为其他 shell 快捷键）；
 - 把 `duanyan` 设为 `EDITOR`，coding agent 里用 `ctrl+g` 打开编辑器直接输入中文；
-- 在 tmux、zellij、herdr 里按快捷键，在光标旁弹出浮窗输入，文字直接上屏到原来的终端窗口。
+- 在 tmux、zellij、herdr 里按快捷键，在光标旁弹出输入框（浮窗）输入，文字直接上屏到原来的终端窗口。
 - 用 `duanyan --stdout` 作为选择器（类 fzf 的交互模式），提交后把文字输出到 stdout。
 
 inline 模式 + shell 集成：
 
 ![inline 模式](assets/inline.gif)
 
-浮窗模式：像 GUI 的系统输入法一样，在 ***任意*** 程序里唤出浮窗，输入中文并直接上屏。支持 tmux、zellij 和 herdr，下面以 tmux + Neovim 为例：
+浮窗模式：像 GUI 的系统输入法一样，在 ***任何*** 程序里唤出输入框，输入中文并直接上屏。支持 tmux、zellij 和 herdr，下面以 tmux + Neovim 为例：
 
 ![tmux 弹窗模式](assets/popup.gif)
 
@@ -180,9 +180,9 @@ bind \cx\cd duanyan_widget
 
 </details>
 
-### tmux / zellij / herdr 浮窗
+### tmux / zellij / herdr 输入框（浮窗）
 
-在 tmux、zellij 或 herdr 里，可以绑定一个快捷键来打字：按下后光标旁会弹出一个小输入框，打完字按 Enter，文字就会出现在原终端窗口里，用起来和 GUI 系统输入法差不多；按 Esc 取消。
+在 tmux、zellij 或 herdr 里，可以绑定一个快捷键来打字：按下后光标旁会弹出一个小输入框，打完字按 Enter，文字就会在上屏在原终端窗口里，用起来就和 GUI 系统输入法差不多；按 Esc 取消。
 
 下面的配置以 Alt+i 为例，可以换成任何不冲突的按键。
 
@@ -228,14 +228,14 @@ height = 7
 - **弹窗大小**：默认 60 列宽、5 行高。在 tmux 和 zellij 里可以用环境变量
   `DUANYAN_POPUP_WIDTH`、`DUANYAN_POPUP_HEIGHT` 修改（tmux 里用
   `set-environment -g` 设置），zellij 配置里的 `width`、`height` 建议设成相同的值。
-  herdr 的弹窗总是居中，大小直接由配置里的 `width`、`height` 决定。
+- herdr 不支持检测光标位置（API 限制），因此弹窗只能居中，大小直接由配置里的 `width`、`height` 决定。
 - **竖排候选**：候选词竖着排列时需要更高的弹窗，高度设为「每页候选数 + 4」即可。
 - **深浅色**：tmux 里弹窗跟随 tmux 识别到的深浅色；如果颜色不对，可以在配置里用
   `theme.mode` 手动指定。
 - **多行文字**：多行文字通过 bracketed paste 写入，大多数 TUI 程序都支持这种方式。
 - **弹窗位置**：Claude Code、Codex 这类自己绘制光标的程序里，弹窗会出现在原终端窗口的左下角，
   而不是光标旁。
-- **zellij 浮窗**：在 zellij 的浮窗里按快捷键时，文字会写进当前 tab 里有焦点的非浮动终端窗口。
+- **zellij 浮窗**：在 zellij 的浮窗里按快捷键时，文字会写进当前 tab 里正在 focus 的非浮动终端窗口。
 
 </details>
 
