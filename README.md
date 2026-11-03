@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.jpg" width="180" alt="端砚 Duanyan logo">
+</p>
+
 # 端砚 Duanyan
 
 基于 [librime](https://github.com/rime/librime) 的终端中文输入法
