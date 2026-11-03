@@ -6,7 +6,7 @@ APP。在没有系统输入法的环境里（SSH、TTY）用 rime 打字，有�
 - 直接运行 `duanyan`，输入完后回车，文字自动复制到剪贴板；
 - 在 shell prompt 里直接当输入法用：输入 `^^` 再按 Tab 上屏（类似 fzf 的 `**<Tab>`，也可定义为其他 shell 快捷键）；
 - 把 `duanyan` 设为 `EDITOR`，coding agent 里用 `ctrl+g` 打开编辑器直接输入中文；
-- 在 tmux、zellij、herdr 里按快捷键，在光标旁弹出小窗输入，文字直接写进原来的窗格；
+- 在 tmux、zellij、herdr 里按快捷键，在光标旁弹出浮窗输入，文字直接上屏到原来的终端窗口。
 - 用 `duanyan --stdout` 作为选择器（类 fzf 的交互模式），提交后把文字输出到 stdout。
 
 inline 模式 + shell 集成：
@@ -124,7 +124,7 @@ Enter 保存并退出，Ctrl+J 换行；Esc 放弃修改并以非零退出码退
 | `duanyan sync`                        | 同步用户词典                            |
 | `duanyan info`                        | 显示实际使用的 librime 与数据目录       |
 | `duanyan init <zsh\|bash\|fish>`      | 输出 shell 集成脚本                     |
-| `duanyan popup <tmux\|zellij\|herdr>` | 在 multiplexer 的弹窗里输入，写进原窗格 |
+| `duanyan popup <tmux\|zellij\|herdr>` | 弹出输入框，文字写回原终端窗口          |
 | `duanyan --print-default-config`      | 打印完整默认配置                        |
 | `duanyan --config <path>`             | 使用指定的配置文件                      |
 
@@ -184,8 +184,9 @@ bind \cx\cd duanyan_widget
 
 ### tmux / zellij / herdr 弹窗
 
-在 multiplexer 里绑一个快捷键：按下后在当前窗格的光标旁弹出一个小窗，输入完按
-Enter，文字直接写进原来的窗格；Esc 取消。下面的快捷键只是示例，可以换成任何不冲突的键。
+在 tmux、zellij 或 herdr 里，可以绑定一个快捷键来打字：按下后光标旁会弹出一个小输入框，打完字按 Enter，文字就会出现在原终端窗口里，用起来和系统输入法差不多；按 Esc 取消。
+
+下面的配置以 Alt+i 为例，可以换成任何不冲突的按键。
 
 tmux（`~/.tmux.conf`）：
 
@@ -193,7 +194,7 @@ tmux（`~/.tmux.conf`）：
 bind-key -n M-i run-shell -b 'duanyan popup tmux "#{pane_id}" "#{client_name}"'
 ```
 
-zellij（`config.kdl`，需要安装 [jq](https://jqlang.org)）：
+zellij（`config.kdl`）：
 
 ```kdl
 keybinds {
@@ -211,35 +212,32 @@ keybinds {
 }
 ```
 
-herdr（`config.toml`）：
+herdr（`config.toml`，先按 prefix 再按 Alt+i）：
 
 ```toml
 [[keys.command]]
 key = "prefix+alt+i"
 type = "popup"
 command = "duanyan popup herdr"
-width = 62    # 含边框
+# 比输入区多 2 行 2 列，留给边框
+width = 62
 height = 7
 ```
 
 <details>
 <summary>弹窗注意事项</summary>
 
-- 弹窗默认 60 列宽、5 行高。在 tmux 和 zellij 里可以用环境变量
-  `DUANYAN_POPUP_WIDTH`、`DUANYAN_POPUP_HEIGHT` 调整（tmux 里用
-  `set-environment -g` 设置）。竖排候选需要把高度设为 `3 + 每页候选数 + 1`。
-  zellij 的 `width`、`height` 是浮窗打开时的大小，与这两个变量保持一致可以减少弹窗
-  移动时的闪烁。
-- herdr 的弹窗总是居中，大小由 herdr 配置里的 `width`、`height` 决定。
-- tmux 的弹窗不使用 `popup-style`，背景与终端一致。弹窗里无法探测终端的深浅色，
-  duanyan 改用 tmux 识别到的结果（`#{client_theme}`）；tmux 识别不出时用深色，
-  可以在配置里设置 `theme.mode`。
-- 文字以粘贴（bracketed paste）的方式写入，多行文字不会被当成命令执行。zellij 和
-  herdr 无法得知程序是否支持 bracketed paste，总是按粘贴写入，不支持的程序会看到
-  `^[[200~` 这样的字符。
-- 程序隐藏了光标时（例如 Claude Code、Codex 这类自己画光标的 TUI），弹窗出现在
-  窗格的左下角。
-- zellij 里从另一个浮窗按快捷键时，文字会写进当前 tab 里有焦点的平铺窗格。
+- **弹窗大小**：默认 60 列宽、5 行高。在 tmux 和 zellij 里可以用环境变量
+  `DUANYAN_POPUP_WIDTH`、`DUANYAN_POPUP_HEIGHT` 修改（tmux 里用
+  `set-environment -g` 设置），zellij 配置里的 `width`、`height` 建议设成相同的值。
+  herdr 的弹窗总是居中，大小直接由配置里的 `width`、`height` 决定。
+- **竖排候选**：候选词竖着排列时需要更高的弹窗，高度设为「每页候选数 + 4」即可。
+- **深浅色**：tmux 里弹窗跟随 tmux 识别到的深浅色；如果颜色不对，可以在配置里用
+  `theme.mode` 手动指定。
+- **多行文字**：多行文字通过 bracketed paste 写入，大多数 TUI 程序都支持这种方式。
+- **弹窗位置**：Claude Code、Codex 这类自己绘制光标的程序里，弹窗会出现在原终端窗口的左下角，
+  而不是光标旁。
+- **zellij 浮窗**：在 zellij 的浮窗里按快捷键时，文字会写进当前 tab 里有焦点的非浮动终端窗口。
 
 </details>
 
