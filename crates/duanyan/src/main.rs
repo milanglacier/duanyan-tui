@@ -452,6 +452,12 @@ fn tui(
             .background
             .as_deref()
             .and_then(theme::is_light_background)
+            // Set by `duanyan popup tmux`: tmux popups do not answer OSC 11.
+            .or_else(|| match std::env::var("DUANYAN_BACKGROUND").as_deref() {
+                Ok("light") => Some(true),
+                Ok("dark") => Some(false),
+                _ => None,
+            })
             .unwrap_or(false),
     };
     let base = if light { Theme::LATTE } else { Theme::MOCHA };

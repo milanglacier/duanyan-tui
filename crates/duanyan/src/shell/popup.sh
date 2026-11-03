@@ -88,6 +88,10 @@ tmux)
     # In the popup, opened by the branch below.
     wait_on_error=1
     pane=$2
+    # tmux popups do not answer OSC 11, so pass on what tmux knows.
+    case $3 in
+    light | dark) export DUANYAN_BACKGROUND="$3" ;;
+    esac
     input || exit 0
     buffer=duanyan-$$
     if ! tmux load-buffer -b "$buffer" "$tmp" ||
@@ -102,9 +106,10 @@ tmux)
     die 'usage: duanyan popup tmux "#{pane_id}" "#{client_name}"'
   # shellcheck disable=SC2046
   set -- $(tmux display -p -c "$client" -t "$pane" \
-    '#{pane_left} #{pane_top} #{pane_width} #{pane_height} #{cursor_x} #{cursor_y} #{cursor_flag} #{window_width} #{window_height} #{client_width} #{client_height} #{status} #{status-position}')
-  [ $# -eq 13 ] || die "cannot read the geometry of pane $pane"
+    '#{pane_left} #{pane_top} #{pane_width} #{pane_height} #{cursor_x} #{cursor_y} #{cursor_flag} #{window_width} #{window_height} #{client_width} #{client_height} #{status} #{status-position} #{?client_theme,#{client_theme},unknown}')
+  [ $# -eq 14 ] || die "cannot read the geometry of pane $pane"
   pl=$1 pt=$2 pw=$3 ph=$4 cx=$5 cy=$6 shown=$7 ww=$8 wh=$9 cw=${10} ch=${11}
+  theme=${14}
   case ${12} in
   off) lines=0 ;;
   on) lines=1 ;;
@@ -123,9 +128,12 @@ tmux)
   # shellcheck disable=SC2046
   set -- $(place 0 "$top" $((ww < cw ? ww : cw)) $((wh < ch ? wh : ch)) \
     "$pl" "$pt" "$pw" "$ph" "$cx" "$cy" "$width" "$height")
-  # -y is the popup's bottom edge.
-  tmux display-popup -c "$client" -t "$pane" -B -x "$1" -y $(($2 + $4)) \
-    -w "$3" -h "$4" -E "$(quote "$exe") popup tmux --inside $(quote "$pane")"
+  # -y is the popup's bottom edge. tmux 3.8's default popup-style is grey;
+  # the inline UI should sit on the terminal's own background ("default"
+  # would mean popup-style's).
+  tmux display-popup -c "$client" -t "$pane" -B -s bg=terminal,fg=terminal \
+    -x "$1" -y $(($2 + $4)) -w "$3" -h "$4" \
+    -E "$(quote "$exe") popup tmux --inside $(quote "$pane") $theme"
   ;;
 zellij)
   wait_on_error=1

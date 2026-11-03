@@ -231,6 +231,9 @@ height = 7
   zellij 的 `width`、`height` 是浮窗打开时的大小，与这两个变量保持一致可以减少弹窗
   移动时的闪烁。
 - herdr 的弹窗总是居中，大小由 herdr 配置里的 `width`、`height` 决定。
+- tmux 的弹窗不使用 `popup-style`，背景与终端一致。弹窗里无法探测终端的深浅色，
+  duanyan 改用 tmux 识别到的结果（`#{client_theme}`）；tmux 识别不出时用深色，
+  可以在配置里设置 `theme.mode`。
 - 文字以粘贴（bracketed paste）的方式写入，多行文字不会被当成命令执行。zellij 和
   herdr 无法得知程序是否支持 bracketed paste，总是按粘贴写入，不支持的程序会看到
   `^[[200~` 这样的字符。

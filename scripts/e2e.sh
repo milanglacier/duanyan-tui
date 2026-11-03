@@ -628,6 +628,19 @@ cat >"$tmp/mux-shell" <<'EOF'
 exec env PS1="$MUX_PS1" bash --norc --noprofile
 EOF
 chmod +x "$tmp/mux-shell"
+# A light terminal, for the light_popup checks.
+t set -g window-style bg=#eff1f5
+
+# light_popup PANE MUX: the open popup uses the light theme and the
+# terminal's background; only the status line's accent has a background.
+light_popup() {
+    local status
+    status=$(t capture-pane -e -p -t "$1" | grep "半角")
+    check "$2: popup text in the light theme" \
+        "$([[ $status == *$'\e[38;2;76;79;105m'* ]] && echo latte)" latte
+    check "$2: popup on the terminal background" \
+        "$(grep -o '48;[0-9;]*' <<<"$status" | sort -u)" "48;2;30;102;245"
+}
 
 # col_of PANE ROW TEXT: the 0-based column where TEXT starts on ROW.
 col_of() {
@@ -695,6 +708,8 @@ ti set-environment -gu LC_ALL
 ti bind-key -n M-i run-shell -b "$bin popup tmux '#{pane_id}' '#{client_name}'"
 ti split-window -h -t in "MUX_PS1='R> ' $tmp/mux-shell"
 t new-window -d -n tmux "tmux -L $isock -f /dev/null attach -t in"
+# tmux 3.8's default popup style: grey.
+ti set -g popup-style bg=#737373,fg=#f2f2f2
 
 # right_pane WHAT TEXT: polls the inner right pane until its first lines are
 # TEXT. duanyan clears the popup before the script pastes, so the popup
@@ -725,6 +740,7 @@ t send-keys -t e2e:tmux M-i
 wait_for e2e:tmux "半角"
 t send-keys -t e2e:tmux -l "nihao"
 wait_for e2e:tmux "ni hao" && popup_at e2e:tmux "R> printf abc" 1
+light_popup e2e:tmux tmux
 popup_submit e2e:tmux
 right_pane "tmux: two lines pasted into the pane" $'R> printf abc你好\n世界'
 not_run e2e:tmux
@@ -732,6 +748,9 @@ t send-keys -t e2e:tmux C-c
 
 t send-keys -t e2e:tmux -l "clear"
 t send-keys -t e2e:tmux Enter
+# Otherwise the shell can echo "x" before clearing the screen.
+deadline=$((SECONDS + 10))
+until [[ "$(ti capture-pane -p -t in:0.1)" == "R>" ]] || ((SECONDS > deadline)); do sleep 0.1; done
 t send-keys -t e2e:tmux -l "x"
 t send-keys -t e2e:tmux M-i
 wait_for e2e:tmux "半角"
@@ -804,6 +823,7 @@ EOF
     wait_for e2e:zellij "半角"
     t send-keys -t e2e:zellij -l "nihao"
     wait_for e2e:zellij "ni hao" && popup_at e2e:zellij "Z> printf abc" 1
+    light_popup e2e:zellij zellij
     popup_submit e2e:zellij
     wait_gone e2e:zellij "半角"
     wait_for e2e:zellij $'Z> printf abc你好\n世界' && echo "ok: zellij: two lines pasted into the pane"
