@@ -1,5 +1,6 @@
 # duanyan popup: the inline UI in a tmux, zellij or herdr popup next to the
 # cursor of the pane underneath; the submitted text is pasted into that pane.
+# tmux 3.8 and later get a floating pane instead of a popup.
 # Run by `duanyan popup <mux> [args...]` as `sh -c <this> duanyan <exe> <mux>
 # [args...]`, so that it always runs the duanyan binary it came with.
 #
@@ -85,12 +86,14 @@ place)
   ;;
 tmux)
   if [ "$1" = --inside ]; then
-    # In the popup, opened by the branch below.
+    # In the popup or floating pane, opened by the branch below.
     wait_on_error=1
     pane=$2
-    # tmux popups do not answer OSC 11, so pass on what tmux knows.
     case $3 in
+    # tmux popups do not answer OSC 11, so pass on what tmux knows.
     light | dark) export DUANYAN_BACKGROUND="$3" ;;
+    # Otherwise remain-on-exit would leave the pane behind, dead.
+    float) tmux set -p -t "$TMUX_PANE" remain-on-exit off ;;
     esac
     input || exit 0
     buffer=duanyan-$$
@@ -104,20 +107,26 @@ tmux)
   pane=$1 client=$2
   [ -n "$pane" ] && [ -n "$client" ] ||
     die 'usage: duanyan popup tmux "#{pane_id}" "#{client_name}"'
+  # The last field is "x" when tmux has no floating panes (before 3.8).
+  # TODO(2027-11): drop the display-popup path and require tmux 3.8, along
+  # with DUANYAN_POPUP_TMUX, DUANYAN_BACKGROUND and the e2e popup mode.
   # shellcheck disable=SC2046
   set -- $(tmux display -p -c "$client" -t "$pane" \
-    '#{pane_left} #{pane_top} #{pane_width} #{pane_height} #{cursor_x} #{cursor_y} #{cursor_flag} #{window_width} #{window_height} #{client_width} #{client_height} #{status} #{status-position} #{?client_theme,#{client_theme},unknown}')
-  [ $# -eq 14 ] || die "cannot read the geometry of pane $pane"
+    '#{pane_left} #{pane_top} #{pane_width} #{pane_height} #{cursor_x} #{cursor_y} #{cursor_flag} #{window_width} #{window_height} #{client_width} #{client_height} #{status} #{status-position} #{?client_theme,#{client_theme},unknown} x#{pane_floating_flag}')
+  [ $# -eq 15 ] || die "cannot read the geometry of pane $pane"
   pl=$1 pt=$2 pw=$3 ph=$4 cx=$5 cy=$6 shown=$7 ww=$8 wh=$9 cw=${10} ch=${11}
-  theme=${14}
+  theme=${14} float=1
+  # DUANYAN_POPUP_TMUX=popup lets the e2e tests cover tmux before 3.8.
+  [ "${15}" = x ] || [ "${DUANYAN_POPUP_TMUX:-}" = popup ] && float=
   case ${12} in
   off) lines=0 ;;
   on) lines=1 ;;
   *) lines=${12} ;;
   esac
-  # A status line on top pushes the window down.
+  # Popups are placed in client coordinates, where a status line on top
+  # pushes the window down; floating panes in window coordinates.
   top=0
-  [ "${13}" = top ] && top=$lines
+  [ -z "$float" ] && [ "${13}" = top ] && top=$lines
   pt=$((pt + top))
   ch=$((ch - lines))
   if [ "$shown" = 1 ]; then
@@ -128,12 +137,20 @@ tmux)
   # shellcheck disable=SC2046
   set -- $(place 0 "$top" $((ww < cw ? ww : cw)) $((wh < ch ? wh : ch)) \
     "$pl" "$pt" "$pw" "$ph" "$cx" "$cy" "$width" "$height")
-  # -y is the popup's bottom edge. tmux 3.8's default popup-style is grey;
-  # the inline UI should sit on the terminal's own background ("default"
-  # would mean popup-style's).
-  tmux display-popup -c "$client" -t "$pane" -B -s bg=terminal,fg=terminal \
-    -x "$1" -y $(($2 + $4)) -w "$3" -h "$4" \
-    -E "$(quote "$exe") popup tmux --inside $(quote "$pane") $theme"
+  if [ -n "$float" ]; then
+    # Modal and taking every key, prefix included, like a popup. -A keeps a
+    # zoomed window zoomed.
+    tmux new-pane -O -K -A -B none -t "$pane" \
+      -X "$1" -Y "$2" -x "$3" -y "$4" \
+      "$(quote "$exe") popup tmux --inside $(quote "$pane") float"
+  else
+    # -y is the popup's bottom edge. tmux 3.8's default popup-style is grey;
+    # the inline UI should sit on the terminal's own background ("default"
+    # would mean popup-style's).
+    tmux display-popup -c "$client" -t "$pane" -B -s bg=terminal,fg=terminal \
+      -x "$1" -y $(($2 + $4)) -w "$3" -h "$4" \
+      -E "$(quote "$exe") popup tmux --inside $(quote "$pane") $theme"
+  fi
   ;;
 zellij)
   wait_on_error=1
