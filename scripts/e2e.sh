@@ -704,23 +704,8 @@ not_run() {
         { echo "FAIL: [$1] pasted lines were run" >&2; failures=$((failures + 1)); }
 }
 
-step "popup: tmux"
-isock="$sock-inner"
-popup_cleanup+=("tmux -L $isock kill-server")
+# The inner tmux of the tmux checks.
 ti() { tmux -L "$isock" -f /dev/null "$@"; }
-ti new-session -d -s in -x 100 -y 29 "MUX_PS1='L> ' $tmp/mux-shell"
-# run-shell and the popup get the server's environment.
-for v in XDG_CONFIG_HOME="$tmp/config" XDG_STATE_HOME="$tmp/state" LC_MESSAGES=zh_CN.UTF-8 \
-    HOME="$tmp/mux-home" DUANYAN_POPUP_WIDTH=30; do
-    ti set-environment -g "${v%%=*}" "${v#*=}"
-done
-ti set-environment -gu LANGUAGE
-ti set-environment -gu LC_ALL
-ti bind-key -n M-i run-shell -b "$bin popup tmux '#{pane_id}' '#{client_name}'"
-ti split-window -h -t in "MUX_PS1='R> ' $tmp/mux-shell"
-t new-window -d -n tmux "tmux -L $isock -f /dev/null attach -t in"
-# tmux 3.8's default popup style: grey.
-ti set -g popup-style bg=#737373,fg=#f2f2f2
 
 # right_pane WHAT TEXT: polls the inner right pane until its first lines are
 # TEXT. duanyan clears the popup before the script pastes, so the popup
@@ -745,62 +730,114 @@ popup_cancel() {
     wait_gone "$1" "半角"
 }
 
-wait_for e2e:tmux "R>"
-t send-keys -t e2e:tmux -l "printf abc"
-t send-keys -t e2e:tmux M-i
-wait_for e2e:tmux "半角"
-t send-keys -t e2e:tmux -l "nihao"
-wait_for e2e:tmux "ni hao" && popup_at e2e:tmux "R> printf abc" 1
-light_popup e2e:tmux tmux
-popup_submit e2e:tmux
-right_pane "tmux: two lines pasted into the pane" $'R> printf abc你好\n世界'
-not_run e2e:tmux
-t send-keys -t e2e:tmux C-c
+# tmux_popup MODE: the tmux checks with a floating pane (MODE float, tmux
+# 3.8 and later) or with display-popup (MODE popup, forced through
+# DUANYAN_POPUP_TMUX to cover older tmux).
+tmux_popup() {
+    local mode=$1 w=e2e:tmux-$1 label="tmux ($1)" deadline
+    step "popup: $label"
+    isock="$sock-inner-$mode"
+    popup_cleanup+=("tmux -L $isock kill-server")
+    ti new-session -d -s in -x 100 -y 29 "MUX_PS1='L> ' $tmp/mux-shell"
+    # run-shell and the popup get the server's environment.
+    for v in XDG_CONFIG_HOME="$tmp/config" XDG_STATE_HOME="$tmp/state" LC_MESSAGES=zh_CN.UTF-8 \
+        HOME="$tmp/mux-home" DUANYAN_POPUP_WIDTH=30; do
+        ti set-environment -g "${v%%=*}" "${v#*=}"
+    done
+    [[ $mode == popup ]] && ti set-environment -g DUANYAN_POPUP_TMUX popup
+    ti set-environment -gu LANGUAGE
+    ti set-environment -gu LC_ALL
+    ti bind-key -n M-i run-shell -b "$bin popup tmux '#{pane_id}' '#{client_name}'"
+    ti split-window -h -t in "MUX_PS1='R> ' $tmp/mux-shell"
+    t new-window -d -n "tmux-$mode" "tmux -L $isock -f /dev/null attach -t in"
+    # tmux 3.8's default popup style: grey.
+    ti set -g popup-style bg=#737373,fg=#f2f2f2
 
-t send-keys -t e2e:tmux -l "clear"
-t send-keys -t e2e:tmux Enter
-# Otherwise the shell can echo "x" before clearing the screen.
-deadline=$((SECONDS + 10))
-until [[ "$(ti capture-pane -p -t in:0.1)" == "R>" ]] || ((SECONDS > deadline)); do sleep 0.1; done
-t send-keys -t e2e:tmux -l "x"
-t send-keys -t e2e:tmux M-i
-wait_for e2e:tmux "半角"
-t send-keys -t e2e:tmux -l "nihao"
-wait_for e2e:tmux "ni hao"
-popup_cancel e2e:tmux
-right_pane "tmux: esc pastes nothing" "R> x"
+    wait_for $w "R>"
+    t send-keys -t $w -l "printf abc"
+    t send-keys -t $w M-i
+    wait_for $w "半角"
+    if [[ $mode == float ]]; then
+        check "$label: a modal floating pane" \
+            "$(ti list-panes -t in -F '#{pane_floating_flag}#{pane_modal_flag}' | grep -c 11)" 1
+    fi
+    t send-keys -t $w -l "nihao"
+    wait_for $w "ni hao" && popup_at $w "R> printf abc" 1
+    light_popup $w "$label"
+    popup_submit $w
+    right_pane "$label: two lines pasted into the pane" $'R> printf abc你好\n世界'
+    not_run $w
+    t send-keys -t $w C-c
 
-ti set -g status-position top
-deadline=$((SECONDS + 10))
-until [[ "$(screen e2e:tmux | head -1)" == "[in]"* ]] || ((SECONDS > deadline)); do sleep 0.1; done
-t send-keys -t e2e:tmux M-i
-wait_for e2e:tmux "半角"
-t send-keys -t e2e:tmux -l "nihao"
-wait_for e2e:tmux "ni hao" && popup_at e2e:tmux "R> x" 1
-popup_cancel e2e:tmux
+    t send-keys -t $w -l "clear"
+    t send-keys -t $w Enter
+    # Otherwise the shell can echo "x" before clearing the screen.
+    deadline=$((SECONDS + 10))
+    until [[ "$(ti capture-pane -p -t in:0.1)" == "R>" ]] || ((SECONDS > deadline)); do sleep 0.1; done
+    t send-keys -t $w -l "x"
+    t send-keys -t $w M-i
+    wait_for $w "半角"
+    t send-keys -t $w -l "nihao"
+    wait_for $w "ni hao"
+    popup_cancel $w
+    right_pane "$label: esc pastes nothing" "R> x"
 
-t send-keys -t e2e:tmux C-u
-t send-keys -t e2e:tmux -l "seq 1 40"
-t send-keys -t e2e:tmux Enter
-wait_for e2e:tmux $'40\n'
-t send-keys -t e2e:tmux -l "y"
-t send-keys -t e2e:tmux M-i
-wait_for e2e:tmux "半角"
-t send-keys -t e2e:tmux -l "nihao"
-wait_for e2e:tmux "ni hao" && popup_at e2e:tmux "R> y" -5
-popup_cancel e2e:tmux
+    ti set -g status-position top
+    deadline=$((SECONDS + 10))
+    until [[ "$(screen $w | head -1)" == "[in]"* ]] || ((SECONDS > deadline)); do sleep 0.1; done
+    t send-keys -t $w M-i
+    wait_for $w "半角"
+    t send-keys -t $w -l "nihao"
+    wait_for $w "ni hao" && popup_at $w "R> x" 1
+    popup_cancel $w
 
-# A duanyan error, here a broken config file, stays in the popup until Enter.
-mkdir -p "$tmp/bad-config/duanyan"
-echo "not toml [" >"$tmp/bad-config/duanyan/config.toml"
-ti set-environment -g XDG_CONFIG_HOME "$tmp/bad-config"
-t send-keys -t e2e:tmux M-i
-wait_for e2e:tmux "Press Enter to close" >/dev/null &&
-    echo "ok: tmux: a duanyan error stays in the popup"
-t send-keys -t e2e:tmux Enter
-wait_gone e2e:tmux "Press Enter to close"
-ti set-environment -g XDG_CONFIG_HOME "$tmp/config"
-ti kill-server
+    t send-keys -t $w C-u
+    t send-keys -t $w -l "seq 1 40"
+    t send-keys -t $w Enter
+    wait_for $w $'40\n'
+    t send-keys -t $w -l "y"
+    t send-keys -t $w M-i
+    wait_for $w "半角"
+    t send-keys -t $w -l "nihao"
+    wait_for $w "ni hao" && popup_at $w "R> y" -5
+    popup_cancel $w
+
+    if [[ $mode == float ]]; then
+        # A zoomed window stays zoomed; with remain-on-exit, no dead pane is
+        # left behind.
+        ti resize-pane -Z -t in:0.1
+        ti set -g remain-on-exit on
+        deadline=$((SECONDS + 10))
+        until [[ "$(screen $w)" != *"L>"* ]] || ((SECONDS > deadline)); do sleep 0.1; done
+        t send-keys -t $w M-i
+        wait_for $w "半角"
+        t send-keys -t $w -l "nihao"
+        wait_for $w "ni hao" && popup_at $w "R> y" -5
+        check "$label: zoomed while open" "$(ti display -p -t in '#{window_zoomed_flag}')" 1
+        popup_cancel $w
+        deadline=$((SECONDS + 5))
+        until [[ "$(ti list-panes -t in | wc -l)" == 2 ]] || ((SECONDS > deadline)); do sleep 0.1; done
+        check "$label: no pane left behind" "$(ti list-panes -t in | wc -l)" 2
+        check "$label: zoomed after closing" "$(ti display -p -t in '#{window_zoomed_flag}')" 1
+        ti set -g remain-on-exit off
+        ti resize-pane -Z -t in:0.1
+    fi
+
+    # A duanyan error, here a broken config file, stays in the popup until Enter.
+    mkdir -p "$tmp/bad-config/duanyan"
+    echo "not toml [" >"$tmp/bad-config/duanyan/config.toml"
+    ti set-environment -g XDG_CONFIG_HOME "$tmp/bad-config"
+    t send-keys -t $w M-i
+    wait_for $w "Press Enter to close" >/dev/null &&
+        echo "ok: $label: a duanyan error stays in the popup"
+    t send-keys -t $w Enter
+    wait_gone $w "Press Enter to close"
+    ti set-environment -g XDG_CONFIG_HOME "$tmp/config"
+    ti kill-server
+}
+
+tmux_popup float
+tmux_popup popup
 
 step "popup: zellij"
 if ! command -v zellij >/dev/null || ! command -v jq >/dev/null; then
