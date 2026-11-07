@@ -114,7 +114,7 @@ check "OSC 52 clipboard content" "$(t show-buffer)" $'你好\n世界'
 
 step "fullscreen: compat ctrl+l / ctrl+r toggle ascii mode"
 t send-keys -t e2e:full C-l
-wait_for e2e:full " 西 " && echo "ok: status bar shows ascii mode"
+wait_for e2e:full " Ａ " && echo "ok: status bar shows ascii mode"
 t send-keys -t e2e:full -l "abc"
 wait_for e2e:full "│ abc" && echo "ok: ascii text goes straight to the buffer"
 
@@ -203,7 +203,7 @@ printf '[tui]\nkitty_keyboard = "on"\n' >"$tmp/kkp.toml"
 t new-window -d -n kkp "$tmp/duanyan --config $tmp/kkp.toml; sleep 600"
 wait_for e2e:kkp "朙月拼音·简化字" && wait_for e2e:kkp " 中 "
 t send-keys -t e2e:kkp -l $'\e[57442;5u' $'\e[108;5u' $'\e[108;5:3u' $'\e[57442;1:3u'
-wait_for e2e:kkp " 西 " && echo "ok: ctrl+l toggles ascii mode while Ctrl is reported"
+wait_for e2e:kkp " Ａ " && echo "ok: ctrl+l toggles ascii mode while Ctrl is reported"
 t send-keys -t e2e:kkp -l $'\e[57441;2u' $'\e[57441;1:3u'
 wait_for e2e:kkp " 中 " && echo "ok: bare Shift tap toggles back"
 t kill-window -t e2e:kkp
