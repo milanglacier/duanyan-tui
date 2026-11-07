@@ -4,7 +4,7 @@
 
 ## 状态
 
-已实现，待在 kitty 里手动验证。
+已完成。
 
 - `flake.lock`：nixpkgs 更新到 2026-11-03，devShell 的 tmux 为 3.8。
 - `popup.sh`：现有的 `tmux display` 里加 `x#{pane_floating_flag}` 检测浮动 pane；
@@ -32,4 +32,4 @@
 
 ## 手动验证
 
-- [ ] kitty + tmux 3.8：浅色、深色主题下浮动 pane 的配色；光标旁的位置；zoom。
+- 在 Android 的 Termux 里用 tmux 3.8 试过，浮动 pane 符合预期。

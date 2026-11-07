@@ -83,7 +83,7 @@ bind-key -n M-i run-shell -b 'duanyan popup tmux "#{pane_id}" "#{client_name}"'
 - zoom 的 window 里打开、取消后仍然是 zoom，位置在光标旁；
 - `remain-on-exit on` 时取消后没有留下 dead pane。
 
-手动：在 kitty 里用 tmux 3.8 确认深浅色、位置正常。
+手动：在真实终端里用 tmux 3.8 确认深浅色、位置正常。
 
 ## 6. 文档
 
